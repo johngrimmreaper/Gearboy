@@ -1,3 +1,2 @@
 platforms/linux/gearboy usr/lib/gearboy/
-platforms/shared/gamecontrollerdb.txt usr/lib/gearboy/
 debian/gearboy.desktop usr/share/applications/
