@@ -32,7 +32,7 @@
     #define EXTERN extern
 #endif
 
-static const int config_version = 2;
+static const int config_version = 4;
 static const int config_max_recent_roms = 10;
 static const int config_max_custom_palettes = 5;
 static const int config_memory_editor_count = 17;
@@ -48,6 +48,13 @@ enum config_Theme
     config_Theme_Light = 0,
     config_Theme_Dark = 1,
     config_Theme_Count = 2
+};
+
+enum config_VideoSync
+{
+    config_VideoSync_Disabled = 0,
+    config_VideoSync_Fixed = 1,
+    config_VideoSync_VRR = 2
 };
 
 struct config_Emulator
@@ -67,6 +74,7 @@ struct config_Emulator
     bool sgb_border = true;
     bool ffwd = false;
     int ffwd_speed = 1;
+    int runahead = 0;
     bool show_info = false;
     int mbc = 0;
     std::string recent_roms[config_max_recent_roms];
@@ -84,7 +92,9 @@ struct config_Emulator
     int window_width = 800;
     int window_height = 700;
     bool status_messages = false;
+    bool allow_screensaver = false;
     int mcp_tcp_port = 7777;
+    std::string mcp_http_address = "127.0.0.1";
     int tilt_source = 0;
     int mouse_sensitivity_x = 5;
     int mouse_sensitivity_y = 5;
@@ -115,7 +125,7 @@ struct config_Video
         {{0xFF, 0xE4, 0xC2}, {0xDC, 0xA4, 0x56}, {0xA9, 0x60, 0x4C}, {0x42, 0x29, 0x36}},
         {{0xCE, 0xCE, 0xCE}, {0x6F, 0x9E, 0xDF}, {0x42, 0x67, 0x8E}, {0x10, 0x25, 0x33}}
     };
-    bool sync = true;
+    int sync_mode = config_VideoSync_Disabled;
     bool color_correction = true;
     float background_color[config_Theme_Count][3] = {
         {128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f},
@@ -259,6 +269,7 @@ struct config_Debug
     bool dis_dim_auto_symbols = false;
     bool dis_replace_symbols = true;
     bool dis_replace_labels = true;
+    int dis_syntax = GB_Disassembler_Syntax_Gearboy;
     int dis_look_ahead_count = 20;
     int font_size = 0;
     int scale = 2;

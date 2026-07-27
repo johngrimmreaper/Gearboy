@@ -502,13 +502,15 @@ void Video::SetColorPalette(bool background, u8 value)
     {
         case GB_PIXEL_RGB565:
         {
-            u8 green_6bit = (*palette_color_gbc >> 4) & 0x3E;
+            u8 green_5bit = (*palette_color_gbc >> 5) & 0x1F;
+            u8 green_6bit = (green_5bit << 1) | (green_5bit >> 4);
             *palette_color_final = (red_5bit << 11) | (green_6bit << 5) | blue_5bit;
             break;
         }
         case GB_PIXEL_BGR565:
         {
-            u8 green_6bit = (*palette_color_gbc >> 4) & 0x3E;
+            u8 green_5bit = (*palette_color_gbc >> 5) & 0x1F;
+            u8 green_6bit = (green_5bit << 1) | (green_5bit >> 4);
             *palette_color_final = (blue_5bit << 11) | (green_6bit << 5) | red_5bit;
             break;
         }
@@ -727,9 +729,15 @@ void Video::RenderBG(int line, int pixel)
     }
     else
     {
-        for (int x = 0; x < 4; x++)
+#ifdef PERFORMANCE
+        int pixels_to_clear = 160;
+#else
+        int pixels_to_clear = 4;
+#endif
+        for (int x = 0; x < pixels_to_clear; x++)
         {
             int position = line_width + pixel + x;
+            m_pColorFrameBuffer[position] = 0;
             m_pFrameBuffer[position] = 0;
             m_pColorCacheBuffer[position] = 0;
         }
