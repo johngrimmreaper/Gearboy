@@ -37,6 +37,8 @@
 #define GB_VIDEO_WIDTH 160
 #define GB_VIDEO_HEIGHT 144
 
+#define RETRO_DEVICE_GAMEBOY RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 0)
+
 #ifdef _WIN32
 static const char slash = '\\';
 #else
@@ -63,8 +65,9 @@ static int8_t dpad_horizontal_latch = 0;
 static bool bootrom_dmg = false;
 static bool bootrom_gbc = false;
 static bool color_correction = true;
-static bool libretro_supports_bitmasks;
+static bool libretro_supports_bitmasks = false;
 static bool categories_supported = false;
+static unsigned input_device = RETRO_DEVICE_GAMEBOY;
 static float libretro_tilt_x = 0.0f;
 static float libretro_tilt_y = 0.0f;
 static int mouse_sensitivity_x = 5;
@@ -92,10 +95,18 @@ static void fallback_log(enum retro_log_level level, const char *fmt, ...)
     va_end(va);
 }
 
+static bool IsJoypadDevice(unsigned device)
+{
+    return ((device == RETRO_DEVICE_JOYPAD) || (device == RETRO_DEVICE_GAMEBOY));
+}
+
 static GearboyCore* core;
 static Cartridge::CartridgeTypes mapper = Cartridge::CartridgeNotSupported;
 
 static retro_environment_t environ_cb;
+
+static void reset_controller_device(void);
+static void apply_controller_device(unsigned port, unsigned device, bool log_device);
 
 // red, green, blue
 static GB_Color original_palette[4] = {{0x87, 0x96, 0x03},{0x4D, 0x6B, 0x03},{0x2B, 0x55, 0x03},{0x14, 0x44, 0x03}};
@@ -130,12 +141,21 @@ void retro_init(void)
 
     audio_sample_count = 0;
     libretro_supports_bitmasks = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL);
+
+    apply_controller_device(0, input_device, false);
 }
 
 void retro_deinit(void)
 {
     SafeDeleteArray(gearboy_frame_buf);
     SafeDelete(core);
+
+    audio_sample_count = 0;
+    libretro_supports_bitmasks = false;
+    libretro_tilt_x = 0.0f;
+    libretro_tilt_y = 0.0f;
+
+    reset_controller_device();
 }
 
 unsigned retro_api_version(void)
@@ -145,7 +165,41 @@ unsigned retro_api_version(void)
 
 void retro_set_controller_port_device(unsigned port, unsigned device)
 {
-    log_cb(RETRO_LOG_INFO, "Plugging device %u into port %u.\n", device, port);
+    if (port > 0)
+    {
+        if (log_cb)
+            log_cb(RETRO_LOG_DEBUG, "retro_set_controller_port_device invalid port number: %u\n", port);
+        return;
+    }
+
+    input_device = device;
+
+    apply_controller_device(port, device, true);
+}
+
+static void reset_controller_device(void)
+{
+    input_device = RETRO_DEVICE_GAMEBOY;
+}
+
+static void apply_controller_device(unsigned port, unsigned device, bool log_device)
+{
+    if (!log_device || !log_cb)
+        return;
+
+    switch (device)
+    {
+        case RETRO_DEVICE_NONE:
+            log_cb(RETRO_LOG_INFO, "Controller %u: Unplugged\n", port);
+            break;
+        case RETRO_DEVICE_GAMEBOY:
+        case RETRO_DEVICE_JOYPAD:
+            log_cb(RETRO_LOG_INFO, "Controller %u: Nintendo Game Boy\n", port);
+            break;
+        default:
+            log_cb(RETRO_LOG_DEBUG, "Setting descriptors for unsupported device.\n");
+            break;
+    }
 }
 
 void retro_get_system_info(struct retro_system_info *info)
@@ -187,11 +241,13 @@ void retro_set_environment(retro_environment_t cb)
         log_cb = fallback_log;
 
     static const struct retro_controller_description controllers[] = {
-        { "Nintendo Gameboy", RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 0) },
+        { "Joypad Auto", RETRO_DEVICE_JOYPAD },
+        { "Joypad Port Empty", RETRO_DEVICE_NONE },
+        { "Nintendo Game Boy", RETRO_DEVICE_GAMEBOY },
     };
 
     static const struct retro_controller_info ports[] = {
-        { controllers, 1 },
+        { controllers, 3 },
         { NULL, 0 },
     };
 
@@ -243,15 +299,17 @@ static void update_input(void)
 {
     input_poll_cb();
 
-    int16_t ib;
-    if (libretro_supports_bitmasks)
-        ib = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
-    else
+    int16_t ib = 0;
+    if (IsJoypadDevice(input_device))
     {
-        unsigned int i;
-        ib = 0;
-        for (i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++)
-            ib |= input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, i) ? (1 << i) : 0;
+        if (libretro_supports_bitmasks)
+            ib = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+        else
+        {
+            unsigned int i;
+            for (i = 0; i <= RETRO_DEVICE_ID_JOYPAD_R3; i++)
+                ib |= input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, i) ? (1 << i) : 0;
+        }
     }
 
     bool raw_up = (ib & (1 << RETRO_DEVICE_ID_JOYPAD_UP)) != 0;
@@ -631,6 +689,10 @@ static void check_variables(void)
                 sensor_accel_enabled = false;
             }
         }
+        else if (tilt_source == 1 && sensor_interface.set_sensor_state && !sensor_accel_enabled)
+        {
+            sensor_accel_enabled = sensor_interface.set_sensor_state(0, RETRO_SENSOR_ACCELEROMETER_ENABLE, 60);
+        }
     }
 
     var.key = "gearboy_analog_sensitivity_x";
@@ -774,6 +836,7 @@ void retro_reset(void)
 bool retro_load_game(const struct retro_game_info *info)
 {
     core->GetCartridge()->Reset();
+    environ_cb(RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE, &sensor_interface);
     check_variables();
     load_bootroms();
 
@@ -800,7 +863,6 @@ bool retro_load_game(const struct retro_game_info *info)
     };
 
     environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
-    environ_cb(RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE, &sensor_interface);
 
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
     

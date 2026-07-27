@@ -26,6 +26,7 @@
 #include "sound_queue.h"
 #include "config.h"
 #include "rewind.h"
+#include "runahead.h"
 #include "events.h"
 #include "mcp/mcp_manager.h"
 
@@ -103,6 +104,7 @@ bool emu_init(void)
     emu_debug_disable_breakpoints = false;
     emu_debug_irq_breakpoints = false;
     emu_debug_step_frames_pending = 0;
+    emu_frame_counter = 0;
     emu_debug_background_tile_address = -1;
     emu_debug_background_map_address = -1;
     emu_debug_tile_dmg_palette = 0;
@@ -116,6 +118,7 @@ bool emu_init(void)
     mcp_manager->Init(gearboy);
 
     rewind_init();
+    runahead_init();
 
     for (int i = 0; i < 5; i++)
     {
@@ -139,6 +142,7 @@ void emu_destroy(void)
 
     save_ram();
     rewind_destroy();
+    runahead_destroy();
     SafeDelete(mcp_manager);
     for (int i = 0; i < 5; i++)
         SafeDeleteArray(emu_savestates_screenshots[i].data);
@@ -270,6 +274,7 @@ void emu_update(void)
 
     int sampleCount = 0;
     bool frame_executed = false;
+    bool frame_completed = false;
 
     if (rewind_is_active())
     {
@@ -302,9 +307,13 @@ void emu_update(void)
 
         if (executed)
         {
+            Debug_Command debug_command = emu_debug_command;
             rewind_commit_seek();
             breakpoint_hit = gearboy->RunToVBlank(frame_buffer_565, audio_buffer, &sampleCount, false, &debug_run);
             frame_executed = true;
+
+            if (!breakpoint_hit && (debug_command == Debug_Command_StepFrame || debug_command == Debug_Command_Continue))
+                frame_completed = true;
         }
 
         if (breakpoint_hit || emu_debug_command == Debug_Command_StepFrame || emu_debug_command == Debug_Command_Step)
@@ -336,13 +345,24 @@ void emu_update(void)
         if (!gearboy->IsPaused())
         {
             rewind_commit_seek();
-            gearboy->RunToVBlank(frame_buffer_565, audio_buffer, &sampleCount, false, NULL);
+
+            int runahead = runahead_get_frames();
+            if (runahead > 0)
+                runahead_run(runahead, frame_buffer_565, audio_buffer, &sampleCount);
+            else
+                gearboy->RunToVBlank(frame_buffer_565, audio_buffer, &sampleCount, false, NULL);
+
             frame_executed = true;
+            frame_completed = true;
         }
     }
 
     if (frame_executed)
+    {
+        if (frame_completed)
+            emu_frame_counter++;
         rewind_push();
+    }
 
     if (frame_executed)
     {
@@ -736,8 +756,16 @@ void emu_debug_step_out(void)
 
 void emu_debug_step_frame(void)
 {
+    emu_debug_step_frames(1);
+}
+
+void emu_debug_step_frames(int frames)
+{
+    if (frames < 1)
+        frames = 1;
+
     gearboy->Pause(false);
-    emu_debug_step_frames_pending++;
+    emu_debug_step_frames_pending += frames;
     emu_debug_command = Debug_Command_StepFrame;
 }
 
@@ -752,6 +780,16 @@ void emu_debug_continue(void)
 {
     gearboy->Pause(false);
     emu_debug_command = Debug_Command_Continue;
+}
+
+void emu_set_disassembler_syntax(int syntax)
+{
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    if (IsValidPointer(gearboy))
+        gearboy->GetProcessor()->SetDisassemblerSyntax((GB_Disassembler_Syntax)syntax);
+#else
+    UNUSED(syntax);
+#endif
 }
 
 void emu_load_bootrom_dmg(const char* file_path)
@@ -1053,10 +1091,10 @@ int emu_get_sprite_png(int sprite_index, unsigned char** out_buffer)
     return len;
 }
 
-void emu_mcp_set_transport(int mode, int tcp_port)
+void emu_mcp_set_transport(int mode, int tcp_port, const char* tcp_address)
 {
     if (mcp_manager)
-        mcp_manager->SetTransportMode((McpTransportMode)mode, tcp_port);
+    mcp_manager->SetTransportMode((McpTransportMode)mode, tcp_port, tcp_address);
 }
 
 void emu_mcp_start(void)

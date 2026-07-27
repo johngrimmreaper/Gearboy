@@ -18,6 +18,7 @@
  */
 
 #include "mcp_debug_adapter.h"
+#include "Input.h"
 #include "log.h"
 #include "../utils.h"
 #include "../emu.h"
@@ -28,14 +29,13 @@
 #include "../gui_debug_memeditor.h"
 #include "../gui_debug_rewind.h"
 #include "../config.h"
+#include "../events.h"
 #include "../rewind.h"
 #include <cstring>
 #include <sstream>
 #include <iomanip>
 #include <vector>
 #include <algorithm>
-#include <thread>
-#include <chrono>
 
 static std::string make_printable_ascii(const char* text, size_t max_length)
 {
@@ -144,9 +144,9 @@ void DebugAdapter::StepOut()
     emu_debug_step_out();
 }
 
-void DebugAdapter::StepFrame()
+void DebugAdapter::StepFrame(int frames)
 {
-    emu_debug_step_frame();
+    emu_debug_step_frames(frames);
 }
 
 void DebugAdapter::Reset()
@@ -868,15 +868,16 @@ json DebugAdapter::GetLCDRegisters()
 
     for (int i = 0; i < 12; i++)
     {
-        json reg;
+        json reg = json::array();
         u8 val = memory->Retrieve(lcd_regs[i].addr);
         ss << std::setw(2) << (int)val;
-        reg["address"] = lcd_regs[i].addr;
-        reg["name"] = lcd_regs[i].name;
-        reg["value"] = ss.str(); ss.str("");
+        reg.push_back(lcd_regs[i].name);
+        reg.push_back(lcd_regs[i].addr);
+        reg.push_back(ss.str()); ss.str("");
         registers.push_back(reg);
     }
 
+    result["fields"] = json::array({"name", "address", "value"});
     result["registers"] = registers;
 
     // Decode LCDC bit fields
@@ -1319,7 +1320,7 @@ json DebugAdapter::GetSGBStatus()
     return result;
 }
 
-json DebugAdapter::LoadMedia(const std::string& file_path)
+json DebugAdapter::StartLoadMedia(const std::string& file_path)
 {
     json result;
 
@@ -1330,24 +1331,35 @@ json DebugAdapter::LoadMedia(const std::string& file_path)
         return result;
     }
 
-    emu_load_rom_async(file_path.c_str(), false, Cartridge::CartridgeNotSupported, false);
-
-    int timeout_ms = 180000;
-    int elapsed_ms = 0;
-    while (emu_is_rom_loading() && elapsed_ms < timeout_ms)
+    if (!gui_load_rom(file_path.c_str()))
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        elapsed_ms += 500;
-    }
-
-    if (emu_is_rom_loading())
-    {
-        result["error"] = "Loading timed out";
-        Log("[MCP] LoadMedia timed out: %s", file_path.c_str());
+        result["error"] = "Another media load is already in progress";
+        Log("[MCP] LoadMedia failed: load already in progress");
         return result;
     }
 
-    if (!emu_finish_rom_loading() || !m_core || !m_core->GetCartridge()->IsLoadedROM())
+    result["file_path"] = file_path;
+
+    return result;
+}
+
+bool DebugAdapter::IsMediaLoading() const
+{
+    return gui_is_rom_loading() && emu_is_rom_loading();
+}
+
+json DebugAdapter::FinishLoadMedia(const std::string& file_path)
+{
+    json result;
+
+    if (gui_is_rom_loading() && !gui_finish_loading_rom())
+    {
+        result["error"] = "Failed to load media file";
+        Log("[MCP] LoadMedia failed: %s", file_path.c_str());
+        return result;
+    }
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
     {
         result["error"] = "Failed to load media file";
         Log("[MCP] LoadMedia failed: %s", file_path.c_str());
@@ -1358,8 +1370,6 @@ json DebugAdapter::LoadMedia(const std::string& file_path)
     result["file_path"] = file_path;
     result["rom_name"] = m_core->GetCartridge()->GetFileName();
     result["is_cgb"] = m_core->GetCartridge()->IsCGB();
-
-    config_push_recent_media(file_path);
 
     return result;
 }
@@ -1387,12 +1397,14 @@ json DebugAdapter::ListSaveStateSlots()
 {
     json result;
     json slots = json::array();
+    json empty_slots = json::array();
+
+    update_savestates_data();
 
     for (int i = 0; i < 5; i++)
     {
         json slot;
         slot["slot"] = i + 1;
-        slot["selected"] = (config_emulator.save_slot == i);
 
         if (emu_savestates[i].rom_name[0] != 0)
         {
@@ -1404,17 +1416,18 @@ json DebugAdapter::ListSaveStateSlots()
 
             if (emu_savestates[i].emu_build[0] != 0)
                 slot["emu_build"] = emu_savestates[i].emu_build;
+
+            slots.push_back(slot);
         }
         else
         {
-            slot["empty"] = true;
+            empty_slots.push_back(i + 1);
         }
-
-        slots.push_back(slot);
     }
 
-    result["slots"] = slots;
     result["current_slot"] = config_emulator.save_slot + 1;
+    result["empty_slots"] = empty_slots;
+    result["slots"] = slots;
 
     return result;
 }
@@ -1472,6 +1485,8 @@ json DebugAdapter::LoadState()
 
     int slot = config_emulator.save_slot + 1;
 
+    update_savestates_data();
+
     if (emu_savestates[config_emulator.save_slot].rom_name[0] == 0)
     {
         result["error"] = "Save state slot is empty";
@@ -1483,6 +1498,71 @@ json DebugAdapter::LoadState()
 
     result["success"] = true;
     result["slot"] = slot;
+
+    return result;
+}
+
+json DebugAdapter::SaveStateFile(const std::string& file_path)
+{
+    json result;
+
+    if (file_path.empty())
+    {
+        result["error"] = "File path is required";
+        Log("[MCP] SaveStateFile failed: File path is required");
+        return result;
+    }
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        Log("[MCP] SaveStateFile failed: No media loaded");
+        return result;
+    }
+
+    if (!m_core->SaveState(file_path.c_str(), -1, false))
+    {
+        result["error"] = "Failed to save state file";
+        Log("[MCP] SaveStateFile failed: %s", file_path.c_str());
+        return result;
+    }
+
+    result["success"] = true;
+    result["file_path"] = file_path;
+
+    return result;
+}
+
+json DebugAdapter::LoadStateFile(const std::string& file_path)
+{
+    json result;
+
+    if (file_path.empty())
+    {
+        result["error"] = "File path is required";
+        Log("[MCP] LoadStateFile failed: File path is required");
+        return result;
+    }
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        Log("[MCP] LoadStateFile failed: No media loaded");
+        return result;
+    }
+
+    if (!m_core->LoadState(file_path.c_str(), -1, false))
+    {
+        result["error"] = "Failed to load state file";
+        Log("[MCP] LoadStateFile failed: %s", file_path.c_str());
+        return result;
+    }
+
+    events_sync_input();
+    rewind_reset();
+
+    result["success"] = true;
+    result["file_path"] = file_path;
 
     return result;
 }
@@ -1645,6 +1725,23 @@ json DebugAdapter::ControllerButton(int player, const std::string& button, const
     return result;
 }
 
+json DebugAdapter::GetInputState()
+{
+    static const char* button_names[] = {"up", "down", "left", "right", "a", "b", "start", "select"};
+    static const Gameboy_Keys button_keys[] = {Up_Key, Down_Key, Left_Key, Right_Key, A_Key, B_Key, Start_Key, Select_Key};
+
+    json pressed = json::array();
+    Input* input = m_core->GetInput();
+
+    for (size_t i = 0; i < sizeof(button_keys) / sizeof(button_keys[0]); i++)
+    {
+        if (input->IsKeyPressed(button_keys[i]))
+            pressed.push_back(button_names[i]);
+    }
+
+    return {{"players", json::array({{{"player", 1}, {"pressed", pressed}}})}};
+}
+
 json DebugAdapter::ListSprites()
 {
     json result;
@@ -1754,7 +1851,6 @@ json DebugAdapter::RunToAddress(u16 address)
 
     result["success"] = true;
     result["address"] = address;
-    result["message"] = "Running to address";
 
     return result;
 }
@@ -2136,6 +2232,63 @@ json DebugAdapter::ListSymbols()
     return result;
 }
 
+json DebugAdapter::LookupSymbolByName(const std::string& name)
+{
+    json result;
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        return result;
+    }
+
+    std::vector<DebugSymbol*> symbols;
+    gui_debug_find_symbols(name.c_str(), symbols);
+
+    json matches = json::array();
+    for (size_t i = 0; i < symbols.size(); i++)
+    {
+        std::ostringstream bank_ss, address_ss;
+        bank_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << symbols[i]->bank;
+        address_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << symbols[i]->address;
+
+        matches.push_back({
+            {"bank", bank_ss.str()},
+            {"address", address_ss.str()},
+            {"name", symbols[i]->text}
+        });
+    }
+
+    result["matches"] = matches;
+    result["count"] = matches.size();
+    return result;
+}
+
+json DebugAdapter::LookupSymbolAtAddress(u8 bank, u16 address)
+{
+    json result;
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        return result;
+    }
+
+    std::ostringstream bank_ss, address_ss;
+    bank_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)bank;
+    address_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << address;
+
+    DebugSymbol* symbol = gui_debug_get_symbol(bank, address);
+    result["found"] = IsValidPointer(symbol);
+    result["bank"] = bank_ss.str();
+    result["address"] = address_ss.str();
+
+    if (IsValidPointer(symbol))
+        result["name"] = symbol->text;
+
+    return result;
+}
+
 json DebugAdapter::ListCallStack()
 {
     json result;
@@ -2316,16 +2469,15 @@ json DebugAdapter::GetMemorySelection(int area)
         start_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << start;
         end_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << end;
 
+        result["selected"] = true;
         result["start"] = start_ss.str();
         result["end"] = end_ss.str();
         result["size"] = end - start + 1;
     }
     else
     {
-        result["start"] = NULL;
-        result["end"] = NULL;
+        result["selected"] = false;
         result["size"] = 0;
-        result["note"] = "No selection";
     }
 
     return result;
@@ -2351,7 +2503,6 @@ json DebugAdapter::MemorySearchCapture(int area)
 
     result["success"] = true;
     result["area"] = area;
-    result["message"] = "Memory snapshot captured";
 
     return result;
 }
@@ -2424,6 +2575,7 @@ json DebugAdapter::MemorySearch(int area, const std::string& op, const std::stri
 
     result["area"] = area;
     result["count"] = count;
+    result["fields"] = json::array({"address", "value", "previous"});
     result["results"] = json::array();
 
     if (count > 0 && results_ptr != NULL)
@@ -2435,21 +2587,20 @@ json DebugAdapter::MemorySearch(int area, const std::string& op, const std::stri
         for (int i = 0; i < max_results; i++)
         {
             MemEditor::Search& search = (*results)[i];
-            json item;
+            json item = json::array();
 
             std::ostringstream addr_ss;
             addr_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << search.address;
 
-            item["address"] = addr_ss.str();
-            item["value"] = search.value;
-            item["previous"] = search.prev_value;
+            item.push_back(addr_ss.str());
+            item.push_back(search.value);
+            item.push_back(search.prev_value);
 
             result["results"].push_back(item);
         }
 
         if (count > 1000)
         {
-            result["note"] = "Results limited to first 1000 matches";
             result["total_matches"] = count;
         }
     }
@@ -2484,22 +2635,19 @@ json DebugAdapter::MemoryFindBytes(int area, const std::string& hex_bytes)
 
     result["area"] = area;
     result["count"] = count;
-    result["results"] = json::array();
+    result["addresses"] = json::array();
 
     int max_results = (count > 100) ? 100 : count;
 
     for (int i = 0; i < max_results; i++)
     {
-        json item;
         std::ostringstream addr_ss;
         addr_ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << addresses[i];
-        item["address"] = addr_ss.str();
-        result["results"].push_back(item);
+        result["addresses"].push_back(addr_ss.str());
     }
 
     if (count > 100)
     {
-        result["note"] = "Results limited to first 100 matches";
         result["total_matches"] = count;
     }
 

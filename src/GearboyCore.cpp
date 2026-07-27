@@ -341,6 +341,11 @@ Video* GearboyCore::GetVideo()
     return m_pVideo;
 }
 
+Input* GearboyCore::GetInput()
+{
+    return m_pInput;
+}
+
 TraceLogger* GearboyCore::GetTraceLogger()
 {
     return m_trace_logger;
@@ -624,7 +629,7 @@ void GearboyCore::LoadRam(const char* szPath, bool fullPath)
             s32 fileSize = (s32)file.tellg();
             file.seekg(0, file.beg);
 
-            if (m_pMemory->GetCurrentRule()->LoadRam(file, fileSize))
+            if ((fileSize > 0) && m_pMemory->GetCurrentRule()->LoadRam(file, fileSize))
             {
                 Debug("RAM loaded");
             }
@@ -1207,7 +1212,7 @@ bool GearboyCore::GetSaveStateScreenshot(int index, const char* path, GB_SaveSta
 {
     using namespace std;
 
-    if (!IsValidPointer(screenshot->data) || (screenshot->size == 0))
+    if (!IsValidPointer(screenshot) || !IsValidPointer(screenshot->data) || (screenshot->size == 0))
     {
         Log("Invalid save state screenshot buffer");
         return false;
@@ -1227,7 +1232,13 @@ bool GearboyCore::GetSaveStateScreenshot(int index, const char* path, GB_SaveSta
     }
 
     GB_SaveState_Header header;
-    GetSaveStateHeader(index, path, &header);
+
+    if (!GetSaveStateHeader(index, path, &header))
+    {
+        Log("Invalid save state header");
+        stream.close();
+        return false;
+    }
 
     if (header.screenshot_size == 0)
     {
