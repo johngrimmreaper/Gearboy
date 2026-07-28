@@ -1,18 +1,294 @@
-gearboy (3.8.11-1~ppa1) UNRELEASED; urgency=medium
+gearboy (3.8.11-1) UNRELEASED; urgency=medium
 
+  [ Upstream ]
   * New upstream release 3.8.11.
+  * Harden MCP server protocol compliance, including version negotiation and
+    validation.
+  * Add MCP tool behavior annotations.
+  * Improve MCP HTTP transport reliability and error handling.
+  * Include additional bug fixes and improvements.
+
+  [ Reaper ]
   * Build against libsdl3-dev 3.4.10+ds-1.
-  * Install MIME definitions for Game Boy and Game Boy Color ROM files.
 
- -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Jul 2026 15:08:21 +0000
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 24 Jul 2026 10:57:19 +0000
 
-gearboy (3.8.6-1~ppa1) UNRELEASED; urgency=medium
+gearboy (3.8.10-1) UNRELEASED; urgency=medium
 
-  * Initial PPA build.
-  * Add Debian packaging for Gearboy 3.8.6.
+  [ Upstream ]
+  * New upstream release 3.8.10.
+  * Improve MCP tool discoverability and usability for agents.
+  * Add configurable screen-saver behavior.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 18 Jul 2026 00:16:30 +0000
+
+gearboy (3.8.9-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.9.
+  * Add run-ahead support for reduced input latency.
+  * Update the game controller database.
+  * Associate ROM file extensions with the macOS and Linux desktop
+    applications.
+  * Add a macOS portable mode.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 29 Jun 2026 18:27:19 +0000
+
+gearboy (3.8.8-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.8.
+  * Improve emulation accuracy.
+  * Add Variable Refresh Rate support.
+  * Add an optional MCP tool router to reduce token usage.
+  * Add RGBASM and WLA-DX syntaxes to the disassembler.
+  * Add agentic workflows.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Thu, 25 Jun 2026 22:52:31 +0200
+
+gearboy (3.8.7-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.7.
+  * Improve emulation accuracy.
+  * Improve the MCP server.
+  * Update the game controller database.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 20 Jun 2026 01:30:56 +0200
+
+gearboy (3.8.6-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.6.
+  * Add optional light and dark themes.
+  * Add support for additional unlicensed cartridge mappers.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 31 May 2026 22:17:20 +0200
+
+gearboy (3.8.5-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.5.
+  * Add programmable shaders, including built-in DMG, LCD, ghosting, grid, and
+    blur effects.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 19 May 2026 22:15:25 +0200
+
+gearboy (3.8.4-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.4.
+  * Improve emulation accuracy.
+  * Add Wisdom Tree, M161, MMC1, MMC2, and Pokemon Jade cartridge mappers.
+  * Include additional bug fixes and minor features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 9 May 2026 00:48:44 +0200
+
+gearboy (3.8.3-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.3.
+  * Add rewind support.
+  * Improve the MCP server and agent skill.
+  * Improve the debugger trace logger.
+  * Add an experimental RPM repository.
+  * Update the game controller database.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Apr 2026 23:04:09 +0200
+
+gearboy (3.8.2-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.2.
+  * Add Super Game Boy support.
+  * Improve emulation accuracy.
+  * Add webOS and Linux arm64 support to the libretro core.
+  * Improve the MCP server and agent skill.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Thu, 2 Apr 2026 00:56:03 +0200
+
+gearboy (3.8.1-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.1.
+  * Improve emulation accuracy.
+  * Add HuC1, HuC3, MMM01, MBC7, and TAMA5 cartridge mappers.
+  * Add MBC7 tilt controls using gamepad sensors, the mouse, or an analog
+    stick.
+  * Improve the MCP server and agent skill.
+  * Improve the debugger tile and background windows.
+  * Update the game controller database.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 29 Mar 2026 23:47:20 +0200
+
+gearboy (3.8.0-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.8.0.
+  * Improve emulation accuracy.
+  * Add an MCP server and agent skills, including an optional headless mode.
+  * Migrate the desktop application to SDL3 and OpenGL 3.
+  * Redesign the debugger and add new debugger windows.
+  * Improve audio latency and add configurable audio settings.
+  * Improve fullscreen behavior.
+  * Add support for vertical sync on 120 Hz and 240 Hz displays.
+  * Add an option to restore default settings.
+  * Add a Homebrew tap for macOS.
+  * Include additional bug fixes and improvements.
+
+  [ Nacho Sanchez ]
+  * Integrate the initial Debian packaging into the upstream source tree.
+  * Build the package against libsdl3-dev.
   * Install the binary under /usr/games.
   * Add a desktop entry and application icon.
-  * Add a minimal manual page.
-  * Clean up packaging metadata for lintian.
+  * Add a manual page.
+  * Clean up the packaging metadata for lintian.
 
- -- Nacho Sanchez <863613+drhelius@users.noreply.github.com>  Tue, 25 Mar 2026 00:00:00 +0000
+ -- Reaper <JohnGrimmReaper@disroot.org>  Thu, 26 Mar 2026 22:55:02 +0100
+
+gearboy (3.7.5-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.5.
+  * Add a VGM recorder.
+  * Add configurable shortcuts and support mapping shortcuts to gamepad
+    buttons.
+  * Improve Game Boy Color color correction.
+  * Add support for UTF-8 characters in file paths.
+  * Update the game controller database.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 8 Dec 2025 18:37:18 +0100
+
+gearboy (3.7.4-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.4.
+  * Update the game controller database.
+  * Add an option to control pausing when focus is lost.
+  * Update the macOS application icon.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 31 Oct 2025 19:41:44 +0100
+
+gearboy (3.7.3-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.3.
+  * Add gamepad support for L2 and R2 trigger buttons.
+  * Update the game controller database.
+  * Improve the debugger memory editor.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 27 Aug 2025 14:01:59 +0200
+
+gearboy (3.7.2-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.2.
+  * Improve game-controller selection.
+  * Update the game controller database.
+  * Improve fullscreen behavior on macOS.
+  * Improve mouse-hiding behavior.
+  * Replace GLEW with Glad.
+  * Add an icon to the Windows executable.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 10 Aug 2025 18:47:19 +0200
+
+gearboy (3.7.1-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.1.
+  * Add a command-line option for fullscreen mode.
+  * Improve fullscreen behavior.
+  * Improve performance.
+  * Include additional bug fixes.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 8 Jul 2025 18:09:46 +0200
+
+gearboy (3.7.0-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.7.0.
+  * Improve the debugger memory editor.
+  * Update the game controller database.
+  * Improve game-controller detection and hotplugging.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 14 Apr 2025 10:55:05 +0200
+
+gearboy (3.6.1-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.6.1.
+  * Fix keyboard and game-controller key assignment.
+  * Add an option to unassign controls.
+  * Change the custom ImGui styles to purple.
+  * Include additional bug fixes.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 28 Dec 2024 20:06:48 +0100
+
+gearboy (3.6.0-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.6.0.
+  * Add Windows ARM64 support.
+  * Update GLEW, SDL, ImGui, mINI, miniz, and Native File Dialog.
+  * Add code signing and notarization for macOS binaries.
+  * Improve the audio client.
+  * Add macOS game mode.
+  * Add manual integer video-scaling settings.
+  * Add debugger docking and multi-viewport support.
+  * Improve the debugger memory editor.
+  * Add Wii U Aroma custom-firmware compatibility.
+  * Correct the minimum supported iOS and tvOS versions.
+  * Include additional quality-of-life changes and bug fixes.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 14 Dec 2024 20:10:58 +0100
+
+gearboy (3.5.0-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.5.0.
+  * Add native file dialogs and ROM drag-and-drop support.
+  * Add configurable save and save-state directories.
+  * Improve window scaling and fullscreen behavior.
+  * Improve cursor-hiding behavior.
+  * Add command-line symbol-file loading.
+  * Add support for WLA symbol files.
+  * Improve input response time.
+  * Add screenshot capture.
+  * Add Windows Subsystem for Linux support.
+  * Add automated GitHub Actions builds.
+  * Add RetroFW, PS3, macOS Apple Silicon, and additional libretro build
+    support.
+  * Include additional bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 26 Feb 2024 11:58:58 +0100
+
+gearboy (3.4.0-1) UNRELEASED; urgency=medium
+
+  [ Upstream ]
+  * New upstream release 3.4.0.
+  * Add Game Boy Advance mode.
+  * Add boot ROM support.
+  * Add fullscreen support to the desktop application.
+  * Add multi-line cheat entry.
+  * Add BSD support.
+  * Add five configurable Game Boy palettes.
+  * Improve debugger navigation and add memory-breakpoint support.
+  * Add Apple TV, macOS ARM, and OpenDingux libretro targets.
+  * Improve performance.
+  * Include additional bug fixes.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 13 Aug 2021 23:15:08 +0200
