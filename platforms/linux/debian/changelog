@@ -1,3 +1,14 @@
+gearboy (3.8.12-1) UNRELEASED; urgency=medium
+
+  * Added command-line option for portable mode
+  * Improved MCP Server implementation
+  * libretro VFS support
+  * Improved compatibility in Dev Containers
+  * Updated Game Controller DB
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 7 Aug 2026 13:00:45 +0000
+
 gearboy (3.8.11-1) UNRELEASED; urgency=medium
 
   * [mcp] Hardened server protocol compliance with version negotiation
