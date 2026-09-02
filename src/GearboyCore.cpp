@@ -33,6 +33,7 @@
 #include "MBC2MemoryRule.h"
 #include "MBC3MemoryRule.h"
 #include "MBC5MemoryRule.h"
+#include "MBC6MemoryRule.h"
 #include "MultiMBC1MemoryRule.h"
 #include "HuC1MemoryRule.h"
 #include "HuC3MemoryRule.h"
@@ -67,6 +68,7 @@ GearboyCore::GearboyCore()
     InitPointer(m_pMBC2MemoryRule);
     InitPointer(m_pMBC3MemoryRule);
     InitPointer(m_pMBC5MemoryRule);
+    InitPointer(m_pMBC6MemoryRule);
     InitPointer(m_pHuC1MemoryRule);
     InitPointer(m_pHuC3MemoryRule);
     InitPointer(m_pMMM01MemoryRule);
@@ -93,10 +95,12 @@ GearboyCore::GearboyCore()
     m_bColorCorrectionEnabled = false;
     m_pSaveStateFrameBuffer = NULL;
     m_master_clock_cycles = 0;
+    m_link_cable_cycles = 0;
 }
 
 GearboyCore::~GearboyCore()
 {
+    SafeDelete(m_pMBC6MemoryRule);
     SafeDelete(m_pMBC5MemoryRule);
     SafeDelete(m_pMBC3MemoryRule);
     SafeDelete(m_pMBC2MemoryRule);
@@ -141,7 +145,7 @@ void GearboyCore::Init(GB_Color_Format pixelFormat)
     m_pCartridge = new Cartridge();
     m_pSGB = new SGB(m_pMemory, m_pVideo);
     m_pSGBFrameBuffer = new u16[SGB_SCREEN_WIDTH * SGB_SCREEN_HEIGHT];
-    m_trace_logger = new TraceLogger();
+
 
     m_pMemory->Init();
     m_pProcessor->Init();
@@ -151,45 +155,57 @@ void GearboyCore::Init(GB_Color_Format pixelFormat)
     m_pCartridge->Init();
     m_pSGB->Init();
 
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    m_trace_logger = new TraceLogger(&m_master_clock_cycles, &m_link_cable_cycles);
     m_pProcessor->SetTraceLogger(m_trace_logger);
     m_pVideo->SetTraceLogger(m_trace_logger);
+    m_pMemory->SetTraceLogger(m_trace_logger);
+#endif
 
     InitMemoryRules();
     InitDMGPalette();
     BuildColorCorrectionLUT();
+    m_pVideo->SetColorCorrection(m_ColorCorrectionLUT, m_bColorCorrectionEnabled);
 }
 
-bool GearboyCore::RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampleCount, bool bDMGbuffer, GB_Debug_Run* debug)
+bool GearboyCore::RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampleCount, bool bDMGbuffer, GB_Debug_Run* debug, bool render)
 {
     bool breakpoint_result = false;
+
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    bool debug_enable = IsValidPointer(debug);
+
+    if (debug_enable)
+        m_pProcessor->EnableBreakpoints(debug->stop_on_breakpoint, debug->stop_on_irq);
+    else
+        m_pProcessor->EnableBreakpoints(false, false);
+#endif
 
     if (!m_bPaused && m_pCartridge->IsLoadedROM())
     {
 #if !defined(GEARBOY_DISABLE_DISASSEMBLER)
-        bool debug_enable = false;
-
-        if (IsValidPointer(debug))
-        {
-            debug_enable = true;
-            m_pProcessor->EnableBreakpoints(debug->stop_on_breakpoint, debug->stop_on_irq);
-        }
-
         bool vblank = false;
         int totalClocks = 0;
 
         do
         {
             unsigned int clockCycles = m_pProcessor->RunFor(1);
+            unsigned int cpuClockCycles = clockCycles;
+
+            m_master_clock_cycles += cpuClockCycles;
+            m_link_cable_cycles += cpuClockCycles;
 
             m_pProcessor->UpdateTimers(clockCycles);
-            m_pProcessor->UpdateSerial(clockCycles);
+            m_pProcessor->UpdateSerial(clockCycles, m_link_cable_cycles);
 
             vblank = m_pVideo->Tick(clockCycles, pFrameBuffer, m_pixelFormat);
+            m_master_clock_cycles += clockCycles - cpuClockCycles;
+            m_link_cable_cycles += clockCycles - cpuClockCycles;
             m_pAudio->Tick(clockCycles);
             m_pInput->Tick(clockCycles);
             m_pMBC3MemoryRule->Tick(clockCycles);
+            SynchronizeLinkCable();
             totalClocks += clockCycles;
-            m_master_clock_cycles += clockCycles;
 
             if (debug_enable)
             {
@@ -220,8 +236,13 @@ bool GearboyCore::RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampl
             m_pCartridge->UpdateCurrentRTC();
         }
 
-        if (!bDMGbuffer || m_bCGB)
-            RenderFrameBuffer(pFrameBuffer);
+        if (render)
+        {
+            if (bDMGbuffer && !m_bCGB)
+                RenderDMGIndexFrame(pFrameBuffer);
+            else
+                RenderFrameBuffer(pFrameBuffer);
+        }
 
         breakpoint_result = m_pProcessor->BreakpointHit() || m_pProcessor->RunToBreakpointHit();
 #else
@@ -236,16 +257,22 @@ bool GearboyCore::RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampl
             #else
                 unsigned int clockCycles = m_pProcessor->RunFor(1);
             #endif
+            unsigned int cpuClockCycles = clockCycles;
+
+            m_master_clock_cycles += cpuClockCycles;
+            m_link_cable_cycles += cpuClockCycles;
 
             m_pProcessor->UpdateTimers(clockCycles);
-            m_pProcessor->UpdateSerial(clockCycles);
+            m_pProcessor->UpdateSerial(clockCycles, m_link_cable_cycles);
 
             vblank = m_pVideo->Tick(clockCycles, pFrameBuffer, m_pixelFormat);
+            m_master_clock_cycles += clockCycles - cpuClockCycles;
+            m_link_cable_cycles += clockCycles - cpuClockCycles;
             m_pAudio->Tick(clockCycles);
             m_pInput->Tick(clockCycles);
             m_pMBC3MemoryRule->Tick(clockCycles);
+            SynchronizeLinkCable();
             totalClocks += clockCycles;
-            m_master_clock_cycles += clockCycles;
 
             if (totalClocks > GAMEBOY_CLOCKS_SAFE_LIMIT)
                 vblank = true;
@@ -261,18 +288,25 @@ bool GearboyCore::RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampl
             m_pCartridge->UpdateCurrentRTC();
         }
 
-        if (!bDMGbuffer || m_bCGB)
-            RenderFrameBuffer(pFrameBuffer);
+        if (render)
+        {
+            if (bDMGbuffer && !m_bCGB)
+                RenderDMGIndexFrame(pFrameBuffer);
+            else
+                RenderFrameBuffer(pFrameBuffer);
+        }
 #endif
     }
 
     return breakpoint_result;
 }
 
-bool GearboyCore::LoadROM(const char* szFilePath, bool forceDMG, Cartridge::CartridgeTypes forceType, bool forceGBA)
+bool GearboyCore::LoadROM(const char* szFilePath, bool forceDMG,
+    Cartridge::CartridgeTypes forceType, bool forceGBA, bool softpatching)
 {
-    if (m_pCartridge->LoadFromFile(szFilePath))
+    if (m_pCartridge->LoadFromFile(szFilePath, softpatching))
     {
+        m_pMBC6MemoryRule->InitializePersistentMemory();
         m_bForceDMG = forceDMG;
         Reset(m_bForceDMG ? false : m_pCartridge->IsCGB(), forceGBA);
         m_pMemory->ResetDisassemblerRecords();
@@ -282,7 +316,12 @@ bool GearboyCore::LoadROM(const char* szFilePath, bool forceDMG, Cartridge::Cart
         m_pProcessor->DisassembleNextOPCode();
 #endif
 
-        if (!romTypeOK)
+        if (!romTypeOK && m_pCartridge->IsSoftpatchApplied())
+        {
+            Error("Media rejected after applying IPS patch %s. Loading unpatched media.", m_pCartridge->GetSoftpatchPath());
+            return LoadROM(szFilePath, forceDMG, forceType, forceGBA, false);
+        }
+        else if (!romTypeOK)
         {
             Log("There was a problem with the cartridge header. File: %s...", szFilePath);
         }
@@ -299,6 +338,7 @@ bool GearboyCore::LoadROMFromBuffer(const u8* buffer, int size, bool forceDMG, C
 
     if (m_pCartridge->LoadFromBuffer(buffer, size))
     {
+        m_pMBC6MemoryRule->InitializePersistentMemory();
         m_bForceDMG = forceDMG;
         Reset(m_bForceDMG ? false : m_pCartridge->IsCGB(), forceGBA);
         m_pMemory->ResetDisassemblerRecords();
@@ -356,6 +396,32 @@ u64 GearboyCore::GetMasterClockCycles()
     return m_master_clock_cycles;
 }
 
+u64 GearboyCore::GetLinkCableCycle() const
+{
+    return m_link_cable_cycles;
+}
+
+void GearboyCore::SetLinkCableCallbacks(GB_LinkCableStateCallback state_callback, GB_LinkCableStartCallback start_callback,
+    GB_LinkCablePollCallback poll_callback, GB_LinkCableSyncCallback sync_callback, void* user_data)
+{
+    m_pProcessor->SetLinkCableCallbacks(state_callback, start_callback, poll_callback, sync_callback, user_data);
+}
+
+void GearboyCore::SetLinkCableConnected(bool connected)
+{
+    m_pProcessor->SetLinkCableConnected(connected, m_link_cable_cycles);
+}
+
+bool GearboyCore::IsLinkCableConnected() const
+{
+    return m_pProcessor->IsLinkCableConnected();
+}
+
+void GearboyCore::SynchronizeLinkCable()
+{
+    m_pProcessor->SynchronizeLinkCable(m_link_cable_cycles);
+}
+
 void GearboyCore::SetAccelerometer(double x, double y)
 {
     m_pMBC7MemoryRule->SetAccelerometer(x, y);
@@ -381,6 +447,9 @@ bool GearboyCore::GetRuntimeInfo(GB_RuntimeInfo& runtime_info)
         runtime_info.screen_width = GAMEBOY_WIDTH;
         runtime_info.screen_height = GAMEBOY_HEIGHT;
     }
+
+    runtime_info.fps = (double)GEARBOY_MASTER_CLOCK_RATE / (double)GAMEBOY_CLOCKS_PER_FRAME;
+
     return m_pCartridge->IsLoadedROM();
 }
 
@@ -401,9 +470,6 @@ void GearboyCore::RenderFrameBuffer(u16* pFrameBuffer)
 
         if (IsValidPointer(color_frame_buffer) && (color_frame_buffer != pFrameBuffer))
             memcpy(pFrameBuffer, color_frame_buffer, GAMEBOY_WIDTH * GAMEBOY_HEIGHT * sizeof(u16));
-
-        if (m_bColorCorrectionEnabled)
-            ApplyColorCorrection(pFrameBuffer, GAMEBOY_WIDTH * GAMEBOY_HEIGHT);
 
         return;
     }
@@ -531,7 +597,10 @@ void GearboyCore::SaveRam()
 
 void GearboyCore::SaveRam(const char* szPath, bool fullPath)
 {
-    if (m_pCartridge->IsLoadedROM() && m_pCartridge->HasBattery() && IsValidPointer(m_pMemory->GetCurrentRule()))
+    MemoryRule* rule = m_pMemory->GetCurrentRule();
+    bool persistent = m_pCartridge->HasBattery() || (IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeMBC6);
+
+    if (m_pCartridge->IsLoadedROM() && persistent && IsValidPointer(rule))
     {
         Debug("Saving RAM...");
 
@@ -564,7 +633,7 @@ void GearboyCore::SaveRam(const char* szPath, bool fullPath)
         ofstream file;
         open_ofstream_utf8(file, path.c_str(), ios::out | ios::binary);
 
-        m_pMemory->GetCurrentRule()->SaveRam(file);
+        rule->SaveRam(file);
 
         Debug("RAM saved");
     }
@@ -577,7 +646,10 @@ void GearboyCore::LoadRam()
 
 void GearboyCore::LoadRam(const char* szPath, bool fullPath)
 {
-    if (m_pCartridge->IsLoadedROM() && m_pCartridge->HasBattery() && IsValidPointer(m_pMemory->GetCurrentRule()))
+    MemoryRule* rule = m_pMemory->GetCurrentRule();
+    bool persistent = m_pCartridge->HasBattery() || (IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeMBC6);
+
+    if (m_pCartridge->IsLoadedROM() && persistent && IsValidPointer(rule))
     {
         Debug("Loading RAM...");
 
@@ -629,7 +701,7 @@ void GearboyCore::LoadRam(const char* szPath, bool fullPath)
             s32 fileSize = (s32)file.tellg();
             file.seekg(0, file.beg);
 
-            if ((fileSize > 0) && m_pMemory->GetCurrentRule()->LoadRam(file, fileSize))
+            if ((fileSize > 0) && rule->LoadRam(file, fileSize))
             {
                 Debug("RAM loaded");
             }
@@ -976,7 +1048,7 @@ bool GearboyCore::LoadState(std::istream& stream)
     size_t size = static_cast<size_t>(stream.tellg());
     stream.seekg(0, ios::beg);
 
-    GB_SaveState_Header_Libretro header;
+    GB_SaveState_Header_Libretro header = {};
 #if !defined(__LIBRETRO__)
     bool is_desktop_savestate = false;
 #endif
@@ -1023,6 +1095,12 @@ bool GearboyCore::LoadState(std::istream& stream)
         return LoadStateLegacy(stream, size);
     }
 
+    if (m_pMemory->GetCurrentRule() == m_pMBC6MemoryRule && header.version < GB_SAVESTATE_MBC6_VERSION)
+    {
+        Log("MBC6 save states from unsupported mapper versions cannot be loaded");
+        return false;
+    }
+
 #if !defined(__LIBRETRO__)
     if (is_desktop_savestate)
     {
@@ -1061,6 +1139,7 @@ bool GearboyCore::LoadState(std::istream& stream)
     m_pInput->LoadState(stream, header.version);
     m_pAudio->LoadState(stream, header.version);
     m_pMemory->GetCurrentRule()->LoadState(stream);
+    m_pMemory->RefreshDirectROMPages();
 
     if (header.version >= 102 && m_bSGB)
         m_pSGB->LoadState(stream);
@@ -1071,6 +1150,12 @@ bool GearboyCore::LoadState(std::istream& stream)
 bool GearboyCore::LoadStateLegacy(std::istream& stream, size_t size)
 {
     using namespace std;
+
+    if (m_pMemory->GetCurrentRule() == m_pMBC6MemoryRule)
+    {
+        Log("Legacy MBC6 save states cannot be loaded");
+        return false;
+    }
 
     if (size < (2 * sizeof(u32)))
     {
@@ -1109,6 +1194,7 @@ bool GearboyCore::LoadStateLegacy(std::istream& stream, size_t size)
     m_pInput->LoadState(stream, GB_SAVESTATE_LEGACY_VERSION);
     m_pAudio->LoadState(stream, GB_SAVESTATE_LEGACY_VERSION);
     m_pMemory->GetCurrentRule()->LoadState(stream);
+    m_pMemory->RefreshDirectROMPages();
 
     return true;
 }
@@ -1335,6 +1421,8 @@ void GearboyCore::SetSGBBorder(bool enabled)
 void GearboyCore::EnableColorCorrection(bool enabled)
 {
     m_bColorCorrectionEnabled = enabled;
+    if (IsValidPointer(m_pVideo))
+        m_pVideo->SetColorCorrection(m_ColorCorrectionLUT, enabled);
 }
 
 void GearboyCore::BuildColorCorrectionLUT()
@@ -1411,17 +1499,6 @@ void GearboyCore::BuildColorCorrectionLUT()
     }
 }
 
-void GearboyCore::ApplyColorCorrection(u16* pFrameBuffer, int size)
-{
-    if (!IsValidPointer(pFrameBuffer))
-        return;
-
-    for (int i = 0; i < size; i++)
-    {
-        pFrameBuffer[i] = m_ColorCorrectionLUT[pFrameBuffer[i]];
-    }
-}
-
 void GearboyCore::InitDMGPalette()
 {
     GB_Color color[4];
@@ -1461,6 +1538,8 @@ void GearboyCore::InitMemoryRules()
             m_pVideo, m_pInput, m_pCartridge, m_pAudio);
     m_pMBC5MemoryRule = new MBC5MemoryRule(m_pProcessor, m_pMemory,
             m_pVideo, m_pInput, m_pCartridge, m_pAudio);
+    m_pMBC6MemoryRule = new MBC6MemoryRule(m_pProcessor, m_pMemory,
+            m_pVideo, m_pInput, m_pCartridge, m_pAudio);
     m_pHuC1MemoryRule = new HuC1MemoryRule(m_pProcessor, m_pMemory,
             m_pVideo, m_pInput, m_pCartridge, m_pAudio);
     m_pHuC3MemoryRule = new HuC3MemoryRule(m_pProcessor, m_pMemory,
@@ -1495,6 +1574,7 @@ void GearboyCore::InitMemoryRules()
     m_pMBC2MemoryRule->SetTraceLogger(m_trace_logger);
     m_pMBC3MemoryRule->SetTraceLogger(m_trace_logger);
     m_pMBC5MemoryRule->SetTraceLogger(m_trace_logger);
+    m_pMBC6MemoryRule->SetTraceLogger(m_trace_logger);
     m_pHuC1MemoryRule->SetTraceLogger(m_trace_logger);
     m_pHuC3MemoryRule->SetTraceLogger(m_trace_logger);
     m_pMMM01MemoryRule->SetTraceLogger(m_trace_logger);
@@ -1541,6 +1621,9 @@ bool GearboyCore::AddMemoryRules(Cartridge::CartridgeTypes forceType)
             break;
         case Cartridge::CartridgeMBC5:
             m_pMemory->SetCurrentRule(m_pMBC5MemoryRule);
+            break;
+        case Cartridge::CartridgeMBC6:
+            m_pMemory->SetCurrentRule(m_pMBC6MemoryRule);
             break;
         case Cartridge::CartridgeHuC1:
             m_pMemory->SetCurrentRule(m_pHuC1MemoryRule);
@@ -1632,6 +1715,7 @@ void GearboyCore::Reset(bool bCGB, bool bGBA)
     m_pMBC2MemoryRule->Reset(m_bCGB);
     m_pMBC3MemoryRule->Reset(m_bCGB);
     m_pMBC5MemoryRule->Reset(m_bCGB);
+    m_pMBC6MemoryRule->Reset(m_bCGB);
     m_pHuC1MemoryRule->Reset(m_bCGB);
     m_pHuC3MemoryRule->Reset(m_bCGB);
     m_pMMM01MemoryRule->Reset(m_bCGB);
@@ -1647,6 +1731,9 @@ void GearboyCore::Reset(bool bCGB, bool bGBA)
 
     m_pSGB->Reset();
     m_pIORegistersMemoryRule->SetSGB(m_bSGB ? m_pSGB : NULL);
+
+    if (m_pProcessor->IsLinkCableConnected())
+        m_pProcessor->SetLinkCableConnected(true, m_link_cable_cycles);
 
     if (m_bSGB)
         Log("Reset: Super Game Boy mode enabled");
@@ -1664,6 +1751,21 @@ void GearboyCore::RenderDMGFrame(u16* pFrameBuffer) const
         for (int i = 0; i < pixels; i++)
         {
             pFrameBuffer[i] = m_DMGPalette[pGameboyFrameBuffer[i]];
+        }
+    }
+}
+
+void GearboyCore::RenderDMGIndexFrame(u16* pFrameBuffer) const
+{
+    if (IsValidPointer(pFrameBuffer))
+    {
+        int pixels = GAMEBOY_WIDTH * GAMEBOY_HEIGHT;
+        const u8* pGameboyFrameBuffer = m_pVideo->GetFrameBuffer();
+
+        // Normal DMG and SGB colors are derived from this index buffer.
+        for (int i = 0; i < pixels; i++)
+        {
+            pFrameBuffer[i] = pGameboyFrameBuffer[i];
         }
     }
 }

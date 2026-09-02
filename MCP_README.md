@@ -18,29 +18,29 @@ This server provides tools for game development, rom hacking, reverse engineerin
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-windows-x64.mcpb">Gearboy-3.8.12-mcpb-windows-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-windows-x64.mcpb">Gearboy-3.8.15-mcpb-windows-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-windows-arm64.mcpb">Gearboy-3.8.12-mcpb-windows-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-windows-arm64.mcpb">Gearboy-3.8.15-mcpb-windows-arm64.mcpb</a></td>
     </tr>
     <tr>
       <td rowspan="2"><strong>macOS</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-macos-x64.mcpb">Gearboy-3.8.12-mcpb-macos-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-macos-x64.mcpb">Gearboy-3.8.15-mcpb-macos-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-macos-arm64.mcpb">Gearboy-3.8.12-mcpb-macos-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-macos-arm64.mcpb">Gearboy-3.8.15-mcpb-macos-arm64.mcpb</a></td>
     </tr>
     <tr>
       <td rowspan="2"><strong>Linux</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-linux-x64.mcpb">Gearboy-3.8.12-mcpb-linux-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-linux-x64.mcpb">Gearboy-3.8.15-mcpb-linux-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-mcpb-linux-arm64.mcpb">Gearboy-3.8.12-mcpb-linux-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-mcpb-linux-arm64.mcpb">Gearboy-3.8.15-mcpb-linux-arm64.mcpb</a></td>
     </tr>
   </tbody>
 </table>
@@ -56,7 +56,7 @@ This server provides tools for game development, rom hacking, reverse engineerin
 - **Input State**: Inspect effective pressed buttons and pending tap releases
 - **Bookmarks**: Memory and disassembler bookmarks for navigation
 - **Call Stack**: View function call hierarchy
-- **Trace Logger**: CPU instruction trace with interleaved hardware events (LCD, APU, I/O, bank switching)
+- **Trace Logger**: CPU instruction trace with interleaved LCD, input, timer, APU, serial, and mapper events
 - **Rewind**: Time-travel debugging with snapshot status and seek tools
 - **Screenshot Capture**: Get current frame as PNG image
 - **GUI Integration**: MCP server runs alongside the emulator GUI, sharing the same state
@@ -75,7 +75,7 @@ The HTTP transport mode runs the emulator with an embedded web server on `127.0.
 
 ### Headless Mode
 
-Add `--headless` to run without a GUI window. This is useful for servers, CLI agents, or any machine without a display. All MCP tools work identically in headless mode. Requires `--mcp-stdio` or `--mcp-http`.
+Add `--headless` to run without a GUI window. This is useful for servers, CLI agents, or any machine without a display. All MCP tools work identically in headless mode. Headless mode requires `--mcp-stdio`, `--mcp-http`, or `--link-cable-join N`; link-only mode does not expose MCP tools.
 
 ### Concurrent Clients
 
@@ -339,7 +339,7 @@ The server exposes tools organized in the following categories:
 - `debug_step_into` - Step one SM83 instruction
 - `debug_step_over` - Step over subroutine calls
 - `debug_step_out` - Step out of current subroutine
-- `debug_step_frame` - Step one or more frames
+- `debug_step_frame` - Step one or more frames. Optional `frames` is 1-1000 (default 1). Optional `mode` is `async` (default, returns after scheduling) or `sync` (returns after all requested frames complete at VBlank). Use `mode: "sync"` when issuing dependent tool calls.
 - `debug_run_to_cursor` - Continue execution until reaching specified address
 - `debug_reset` - Reset emulation
 - `debug_get_status` - Get debug status (paused, at_breakpoint, pc address)
@@ -363,7 +363,7 @@ The server exposes tools organized in the following categories:
 - `list_memory_watches` - List all watches in memory area
 - `memory_search_capture` - Capture memory snapshot for search comparison
 - `memory_search` - Search memory with operators (<, >, ==, !=, <=, >=), compare types (previous, value, address), and data types (hex, signed, unsigned)
-- `memory_find_bytes` - Find byte sequences in memory
+- `memory_find` - Find hex byte sequences (`hex_bytes`) or text (`text`, optional `case_sensitive`) in memory
 
 ### Disassembly & Debugging
 - `get_disassembly` - Get SM83 disassembly for specified address range
@@ -376,8 +376,8 @@ The server exposes tools organized in the following categories:
 - `remove_disassembler_bookmark` - Remove disassembler bookmark
 - `list_disassembler_bookmarks` - List all disassembler bookmarks
 - `get_call_stack` - View function call hierarchy
-- `get_trace_log` - Read trace logger entries (CPU + hardware events). Start the trace logger from the debugger window first
-- `set_trace_log` - Start or stop trace logging with event filters
+- `get_trace_log` - Read trace logger entries using absolute sequence pagination. Responses include `total_entries`, `total_logged`, `oldest_sequence`, `start`, `next_sequence`, `count`, `overrun`, and `lines`. Omit `start` for the latest 100 retained entries, or use a negative value to start that many entries from the retained tail
+- `set_trace_log` - Start or stop trace logging. Use `filters` for exact streams such as `cpu.instructions`, `lcd.interrupts`, or `serial.transfers`; omitting it enables the safe default of CPU instructions and interrupts. Storage options are `output` (`memory` or `disk`), `memory_size` (`100K` through `5M`), `disk_size` (`10MB` through `1GB`, or `unbounded`), and `output_path`
 
 ### Breakpoints
 - `set_breakpoint` - Set execution, read, or write breakpoint (supports 3 memory areas: rom_ram, vram, io)
@@ -390,6 +390,8 @@ The server exposes tools organized in the following categories:
 - `get_lcd_registers` - Get all LCD registers (LCDC, STAT, SCY, SCX, LY, LYC, DMA, BGP, OBP0, OBP1, WY, WX) with decoded bit fields. Also CGB registers (KEY1, VBK, HDMA, BCPS, BCPD, OCPS, OCPD, SVBK)
 - `get_lcd_status` - Get LCD status (mode 0-3, screen enabled, LY, LYC match, CGB info)
 - `get_apu_status` - Get Game Boy APU status for all 4 channels (Square 1 with sweep, Square 2, Wave, Noise): volume, frequency, envelope, duty, wave RAM, panning, master volume
+- `get_serial_status` - Get SB/SC registers, decoded clock mode/speed, transfer progress and timing, serial IRQ state, and distinct link-session, remote-peer, and transport diagnostics
+- `reset_link_cable_metrics` - Reset local link-cable activity, synchronization, wait, and recovery counters
 - `get_sgb_status` - Get Super Game Boy status: SGB active, mask mode, multiplayer state, last command, transfer state, border animation, effective palettes, and attribute map
 
 ### Sprites

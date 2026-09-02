@@ -47,6 +47,7 @@ public:
     virtual ~MBC3MemoryRule();
     virtual u8 PerformRead(u16 address);
     virtual void PerformWrite(u16 address, u8 value);
+    virtual bool MapsROMDirectly();
     virtual void Reset(bool bCGB);
     virtual void SaveRam(std::ostream &file);
     virtual bool LoadRam(std::istream &file, s32 fileSize);
@@ -62,11 +63,12 @@ public:
     virtual u8* GetRTCMemory();
     virtual void SaveState(std::ostream& stream);
     virtual void LoadState(std::istream& stream);
-    void Tick(unsigned int clockCycles);
+    INLINE void Tick(unsigned int clockCycles);
 
 private:
     void ResizeRAMBanks();
     void UpdateRTC();
+    NO_INLINE COLD void TickRTC();
     INLINE bool IsPKJD() const;
     INLINE bool IsPoke2in1() const;
     int GetSafeRAMBankMask() const;
@@ -109,6 +111,19 @@ INLINE bool MBC3MemoryRule::IsPKJD() const
 INLINE bool MBC3MemoryRule::IsPoke2in1() const
 {
     return m_pCartridge->GetType() == Cartridge::CartridgePoke2in1;
+}
+
+INLINE void MBC3MemoryRule::Tick(unsigned int clockCycles)
+{
+    if (!m_pCartridge->IsRTCPresent())
+        return;
+    if (IsSetBit(m_RTC.Control, 6))
+        return;
+
+    m_iRTCCycles += clockCycles;
+
+    if (unlikely(m_iRTCCycles >= GEARBOY_MASTER_CLOCK_RATE))
+        TickRTC();
 }
 
 #endif	/* MBC3MEMORYRULE_H */

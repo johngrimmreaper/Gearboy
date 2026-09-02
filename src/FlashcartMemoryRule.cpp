@@ -155,6 +155,12 @@ void FlashcartMemoryRule::PerformWrite(u16 address, u8 value)
                 else if (m_iRAMBytesSize > 0)
                     m_bRamEnabled = ((value & 0x0F) == 0x0A);
             }
+            if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+            {
+                LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                    (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                    (m_bConfigMode ? TRACE_MAPPER_FLAG_MODE : 0), true);
+            }
             break;
         }
         case 0x2000:
@@ -169,7 +175,7 @@ void FlashcartMemoryRule::PerformWrite(u16 address, u8 value)
                 m_RomBankHigh = value & 0x01;
             }
             UpdateBanks();
-            TraceBankSwitch(address, value);
+            TraceMapperEvent(address, value);
             break;
         }
         case 0x4000:
@@ -179,7 +185,7 @@ void FlashcartMemoryRule::PerformWrite(u16 address, u8 value)
                 m_iCurrentRAMBank = value & 0x0F;
                 UpdateBanks();
             }
-            TraceBankSwitch(address, value);
+            TraceMapperEvent(address, value);
             break;
         }
         case 0x6000:
@@ -189,6 +195,12 @@ void FlashcartMemoryRule::PerformWrite(u16 address, u8 value)
                 m_RomBankMask = m_RomBankLatch;
                 UpdateBanks();
             }
+            if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+            {
+                LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                    (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                    (m_bConfigMode ? TRACE_MAPPER_FLAG_MODE : 0), true);
+            }
             break;
         }
         case 0xA000:
@@ -196,7 +208,9 @@ void FlashcartMemoryRule::PerformWrite(u16 address, u8 value)
             if (m_bRamEnabled && m_iRAMBytesSize > 0)
                 m_pRAMBanks[((address - 0xA000) + m_CurrentRAMAddress) & (m_iRAMBytesSize - 1)] = value;
             else
+            {
                 Debug("--> ** Attempting to write on RAM when ram is disabled %X %X", address, value);
+            }
             break;
         }
         default:

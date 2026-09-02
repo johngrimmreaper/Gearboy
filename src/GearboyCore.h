@@ -22,6 +22,7 @@
 
 #include "definitions.h"
 #include "Cartridge.h"
+#include "link_cable.h"
 
 class Memory;
 class Processor;
@@ -35,6 +36,7 @@ class MBC1MemoryRule;
 class MBC2MemoryRule;
 class MBC3MemoryRule;
 class MBC5MemoryRule;
+class MBC6MemoryRule;
 class MultiMBC1MemoryRule;
 class HuC1MemoryRule;
 class HuC3MemoryRule;
@@ -68,8 +70,10 @@ public:
     GearboyCore();
     ~GearboyCore();
     void Init(GB_Color_Format pixelFormat = GB_PIXEL_RGB565);
-    bool RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampleCount, bool bDMGbuffer = false, GB_Debug_Run* debug = NULL);
-    bool LoadROM(const char* szFilePath, bool forceDMG, Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported, bool forceGBA = false);
+    bool RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampleCount, bool bDMGbuffer = false, GB_Debug_Run* debug = NULL, bool render = true);
+    bool LoadROM(const char* szFilePath, bool forceDMG,
+        Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported,
+        bool forceGBA = false, bool softpatching = false);
     bool LoadROMFromBuffer(const u8* buffer, int size, bool forceDMG, Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported, bool forceGBA = false);
     bool GetRuntimeInfo(GB_RuntimeInfo& runtime_info);
     void KeyPressed(Gameboy_Keys key);
@@ -118,12 +122,18 @@ public:
     SGB* GetSGB();
     TraceLogger* GetTraceLogger();
     u64 GetMasterClockCycles();
+    u64 GetLinkCableCycle() const;
+    void SetLinkCableCallbacks(GB_LinkCableStateCallback state_callback, GB_LinkCableStartCallback start_callback,
+        GB_LinkCablePollCallback poll_callback, GB_LinkCableSyncCallback sync_callback, void* user_data);
+    void SetLinkCableConnected(bool connected);
+    bool IsLinkCableConnected() const;
+    void SynchronizeLinkCable();
     void SetAccelerometer(double x, double y);
 
 private:
     void RenderDMGFrame(u16* pFrameBuffer) const;
+    void RenderDMGIndexFrame(u16* pFrameBuffer) const;
     void RenderSGBFrame(u16* pFrameBuffer);
-    void ApplyColorCorrection(u16* pFrameBuffer, int size);
     void BuildColorCorrectionLUT();
     void InitDMGPalette();
     void InitMemoryRules();
@@ -149,6 +159,7 @@ private:
     MBC2MemoryRule* m_pMBC2MemoryRule;
     MBC3MemoryRule* m_pMBC3MemoryRule;
     MBC5MemoryRule* m_pMBC5MemoryRule;
+    MBC6MemoryRule* m_pMBC6MemoryRule;
     MultiMBC1MemoryRule* m_pMultiMBC1MemoryRule;
     HuC1MemoryRule* m_pHuC1MemoryRule;
     HuC3MemoryRule* m_pHuC3MemoryRule;
@@ -178,6 +189,7 @@ private:
     u8* m_pSaveStateFrameBuffer;
     TraceLogger* m_trace_logger;
     u64 m_master_clock_cycles;
+    u64 m_link_cable_cycles;
 };
 
 #endif /* CORE_H */

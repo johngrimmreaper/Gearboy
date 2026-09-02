@@ -39,6 +39,11 @@ MBC3MemoryRule::~MBC3MemoryRule()
     SafeDeleteArray(m_pRAMBanks);
 }
 
+bool MBC3MemoryRule::MapsROMDirectly()
+{
+    return !IsPoke2in1();
+}
+
 void MBC3MemoryRule::Reset(bool bCGB)
 {
     ResizeRAMBanks();
@@ -323,6 +328,12 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                     (*m_pRamChangedCallback)();
                 }
                 m_bRTCEnabled = false;
+                if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+                {
+                    LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                        (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                        (m_bPoke2in1Bank0Change ? TRACE_MAPPER_FLAG_MODE : 0), true);
+                }
                 break;
             }
 
@@ -335,6 +346,12 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                 (*m_pRamChangedCallback)();
             }
             m_bRTCEnabled = enabled && m_pCartridge->IsRTCPresent();
+            if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+            {
+                LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                    (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                    (m_bRTCEnabled ? TRACE_MAPPER_FLAG_RTC_ENABLED : 0), true);
+            }
             break;
         }
         case 0x2000:
@@ -352,7 +369,7 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                 m_iCurrentROMBank &= (m_pCartridge->GetROMBankCount() - 1);
                 m_CurrentROMAddress = m_iCurrentROMBank * 0x4000;
             }
-            TraceBankSwitch(address, value);
+            TraceMapperEvent(address, value);
             break;
         }
         case 0x4000:
@@ -365,8 +382,6 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                 {
                     m_iCurrentRAMBank = value;
                     m_CurrentRAMAddress = (m_iCurrentRAMBank & GetSafeRAMBankMask()) * 0x2000;
-                    TraceBankSwitch(address, value);
-
                     if (value < 8)
                     {
                         m_bPKJDRAMSelected = true;
@@ -385,6 +400,12 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                     m_RTCRegister = value - 8;
                     m_iCurrentRAMBank = -1;
                 }
+                if (IsTraceMapperEventEnabled(TRACE_MAPPER_RAM_RTC))
+                {
+                    LogTraceMapperEvent(address, value, TRACE_MAPPER_RAM_RTC,
+                        (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                        (m_iCurrentRAMBank < 0 ? TRACE_MAPPER_FLAG_RTC_ENABLED : 0), true);
+                }
                 break;
             }
 
@@ -399,7 +420,12 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                 int ramBankCount = m_pCartridge->GetRAMBankCount();
                 m_iCurrentRAMBank = value;
                 m_CurrentRAMAddress = (ramBankCount > 0) ? ((m_iCurrentRAMBank & (ramBankCount - 1)) * 0x2000) : 0;
-                TraceBankSwitch(address, value);
+            }
+            if (IsTraceMapperEventEnabled(TRACE_MAPPER_RAM_RTC))
+            {
+                LogTraceMapperEvent(address, value, TRACE_MAPPER_RAM_RTC,
+                    (m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0) |
+                    (m_iCurrentRAMBank < 0 ? TRACE_MAPPER_FLAG_RTC_ENABLED : 0), true);
             }
             break;
         }
@@ -413,6 +439,11 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
                 m_RTC.LatchedHours = m_RTC.Hours;
                 m_RTC.LatchedDays = m_RTC.Days & 0xFF;
                 m_RTC.LatchedControl = (m_RTC.Control & 0xC0) | ((m_RTC.Days >> 8) & 0x01);
+            }
+            if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+            {
+                LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                    m_bRTCEnabled ? TRACE_MAPPER_FLAG_RTC_ENABLED : 0, true);
             }
             break;
         }
@@ -480,15 +511,8 @@ void MBC3MemoryRule::PerformWrite(u16 address, u8 value)
     }
 }
 
-void MBC3MemoryRule::Tick(unsigned int clockCycles)
+void MBC3MemoryRule::TickRTC()
 {
-    if (!m_pCartridge->IsRTCPresent())
-        return;
-    if (IsSetBit(m_RTC.Control, 6))
-        return;
-
-    m_iRTCCycles += clockCycles;
-
     while (m_iRTCCycles >= GEARBOY_MASTER_CLOCK_RATE)
     {
         m_iRTCCycles -= GEARBOY_MASTER_CLOCK_RATE;

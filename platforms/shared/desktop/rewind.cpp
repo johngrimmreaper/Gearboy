@@ -86,7 +86,7 @@ void rewind_reset(void)
 
 void rewind_push(void)
 {
-    if (!config_rewind.enabled)
+    if (!config_rewind.enabled || emu_link_cable_is_active())
         return;
     if (!IsValidPointer(buffer))
         return;
@@ -95,21 +95,30 @@ void rewind_push(void)
     if (active)
         return;
 
-    if (!ensure_storage())
-        return;
-
     frame_accum++;
     if (frame_accum < config_rewind.frames_per_snapshot)
         return;
     frame_accum = 0;
+
+    if (!ensure_storage())
+        return;
 
     u8* slot = buffer + ((size_t)head * slot_size);
     size_t size = slot_size;
 
     if (!emu_get_core()->SaveState(slot, size, true))
     {
-        Log("Rewind: failed to save snapshot into %zu-byte slot", slot_size);
-        return;
+        storage_dirty = true;
+        if (!ensure_storage())
+            return;
+
+        slot = buffer + ((size_t)head * slot_size);
+        size = slot_size;
+        if (!emu_get_core()->SaveState(slot, size, true))
+        {
+            Log("Rewind: failed to save snapshot into %zu-byte slot", slot_size);
+            return;
+        }
     }
 
     sizes[head] = size;
@@ -120,7 +129,7 @@ void rewind_push(void)
 
 bool rewind_pop(void)
 {
-    if (count == 0)
+    if (emu_link_cable_is_active() || count == 0)
         return false;
     if (!IsValidPointer(buffer))
         return false;
@@ -172,7 +181,7 @@ size_t rewind_get_memory_usage(void)
 
 bool rewind_seek(int age)
 {
-    if (age < 0 || age >= count)
+    if (emu_link_cable_is_active() || age < 0 || age >= count)
         return false;
     if (!IsValidPointer(buffer))
         return false;
@@ -247,12 +256,12 @@ static bool ensure_storage(void)
     }
 
     int target_capacity = get_target_capacity();
+    if (!storage_dirty && IsValidPointer(buffer) && (capacity == target_capacity))
+        return true;
+
     size_t target_slot_size = get_target_slot_size();
     if (target_slot_size == 0)
         return false;
-
-    if (!storage_dirty && IsValidPointer(buffer) && (capacity == target_capacity) && (slot_size >= target_slot_size))
-        return true;
 
     if (storage_dirty && IsValidPointer(buffer) && (capacity == target_capacity) && (slot_size >= target_slot_size))
     {
@@ -315,23 +324,23 @@ static void restore_screenshot(const u8* slot, size_t size)
     if (size <= sizeof(GB_SaveState_Header))
         return;
 
-    const GB_SaveState_Header* header = reinterpret_cast<const GB_SaveState_Header*>(
-        slot + size - sizeof(GB_SaveState_Header));
+    GB_SaveState_Header header;
+    memcpy(&header, slot + size - sizeof(GB_SaveState_Header), sizeof(header));
 
-    if (header->magic != GB_SAVESTATE_MAGIC)
+    if (header.magic != GB_SAVESTATE_MAGIC)
         return;
-    if (header->screenshot_size == 0)
+    if (header.screenshot_size == 0)
         return;
 
     size_t max_screenshot_size = (size_t)SGB_SCREEN_WIDTH * SGB_SCREEN_HEIGHT * sizeof(GB_Color);
-    if (header->screenshot_size > max_screenshot_size)
+    if (header.screenshot_size > max_screenshot_size)
         return;
 
-    if (header->screenshot_size > (size - sizeof(GB_SaveState_Header)))
+    if (header.screenshot_size > (size - sizeof(GB_SaveState_Header)))
         return;
 
-    size_t screenshot_offset = size - sizeof(GB_SaveState_Header) - header->screenshot_size;
+    size_t screenshot_offset = size - sizeof(GB_SaveState_Header) - header.screenshot_size;
     const u8* screenshot_data = slot + screenshot_offset;
 
-    memcpy(emu_frame_buffer, screenshot_data, header->screenshot_size);
+    memcpy(emu_frame_buffer, screenshot_data, header.screenshot_size);
 }

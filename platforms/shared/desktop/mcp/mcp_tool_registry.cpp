@@ -111,6 +111,20 @@ static bool validate_json_schema(const json& value, const json& schema, const st
             error = "Parameter '" + path + "' has too many items";
             return false;
         }
+        if (schema.value("uniqueItems", false))
+        {
+            for (size_t i = 0; i < value.size(); i++)
+            {
+                for (size_t j = i + 1; j < value.size(); j++)
+                {
+                    if (value[i] == value[j])
+                    {
+                        error = "Parameter '" + path + "' must contain unique items";
+                        return false;
+                    }
+                }
+            }
+        }
         if (schema.contains("items") && schema["items"].is_object())
         {
             for (size_t i = 0; i < value.size(); i++)
@@ -191,13 +205,14 @@ static const McpToolCategory kMcpToolCategories[] =
     {"symbols", "Symbols", "Add, remove, load, list, and look up debug symbols or labels."},
     {"hardware_lcd", "LCD Hardware", "Inspect Game Boy LCD registers, display timing, status, palettes, and video state."},
     {"hardware_audio", "Audio Hardware", "Inspect Game Boy APU state, channels, mixer, volume, and sound registers."},
+    {"hardware_serial", "Serial Hardware", "Inspect Game Boy SB/SC serial transfers, interrupts, timing, and local link-cable transport."},
     {"hardware_sgb", "Super Game Boy", "Inspect Super Game Boy command, border, mask, multiplayer, palette, and transfer state."},
     {"media", "Media", "Load ROMs, list recent media, load symbols, and inspect loaded cartridge/media information."},
     {"capture", "Capture", "Capture current screenshots and Game Boy sprite images or sprite metadata."},
     {"state", "Save States", "List save slots, select a slot, save emulator state, and load emulator state."},
     {"rewind", "Rewind", "Inspect rewind buffer status and seek to rewind snapshots for time-travel debugging."},
     {"input", "Input", "Inspect, press, release, tap, or macro Game Boy input."},
-    {"trace", "Trace", "Read trace log entries and configure CPU, interrupt, video, audio, memory, and debug-message tracing."},
+    {"trace", "Trace", "Read trace entries and configure CPU, IRQ, LCD, input, timer, APU, serial, and mapper tracing."},
     {"tools", "Other Tools", "Additional emulator/debugger tools that do not fit another category."}
 };
 
@@ -219,7 +234,7 @@ static const char* const kMcpMemoryTools[] =
     "list_memory_areas", "read_memory", "write_memory", "select_memory_range",
     "set_memory_selection_value", "get_memory_selection", "add_memory_bookmark",
     "remove_memory_bookmark", "list_memory_bookmarks", "add_memory_watch", "remove_memory_watch",
-    "list_memory_watches", "memory_search_capture", "memory_search", "memory_find_bytes"
+    "list_memory_watches", "memory_search_capture", "memory_search", "memory_find"
 };
 
 static const char* const kMcpCpuTools[] =
@@ -247,6 +262,11 @@ static const char* const kMcpLcdTools[] =
 static const char* const kMcpAudioTools[] =
 {
     "get_apu_status"
+};
+
+static const char* const kMcpSerialTools[] =
+{
+    "get_serial_status", "reset_link_cable_metrics"
 };
 
 static const char* const kMcpSgbTools[] =
@@ -295,6 +315,7 @@ static const McpToolCategoryTools kMcpToolCategoryTools[] =
     {"symbols", kMcpSymbolTools, MCP_ARRAY_COUNT(kMcpSymbolTools)},
     {"hardware_lcd", kMcpLcdTools, MCP_ARRAY_COUNT(kMcpLcdTools)},
     {"hardware_audio", kMcpAudioTools, MCP_ARRAY_COUNT(kMcpAudioTools)},
+    {"hardware_serial", kMcpSerialTools, MCP_ARRAY_COUNT(kMcpSerialTools)},
     {"hardware_sgb", kMcpSgbTools, MCP_ARRAY_COUNT(kMcpSgbTools)},
     {"media", kMcpMediaTools, MCP_ARRAY_COUNT(kMcpMediaTools)},
     {"capture", kMcpCaptureTools, MCP_ARRAY_COUNT(kMcpCaptureTools)},
@@ -672,10 +693,8 @@ std::string McpToolRegistry::AliasesForTool(const std::string& tool_name) const
     std::string name = NormalizeToolName(tool_name);
     std::string aliases = ToolCategoryForName(name);
 
-    if (StringContains(name, "mikey"))
-        aliases += " timers timer irq interrupt hblank vblank audio uart comlynx";
-    if (StringContains(name, "suzy") || StringContains(name, "sprite"))
-        aliases += " sprites sprite blitter math collision scb";
+    if (StringContains(name, "sprite"))
+        aliases += " sprites sprite oam object tile attributes palette";
     if (StringContains(name, "vdp") || StringContains(name, "lcd") ||
         StringContains(name, "huc62"))
         aliases += " video display scanline hblank vblank palette tiles background";
@@ -683,6 +702,8 @@ std::string McpToolRegistry::AliasesForTool(const std::string& tool_name) const
         StringContains(name, "audio") || StringContains(name, "ym2413") ||
         StringContains(name, "ay8910"))
         aliases += " sound audio channel tone noise volume";
+    if (StringContains(name, "serial") || StringContains(name, "link_cable"))
+        aliases += " serial link cable sb sc clock transfer irq peer session shared memory";
     if (StringContains(name, "breakpoint"))
         aliases += " watchpoint stop read write execute irq interrupt";
     if (StringContains(name, "memory"))

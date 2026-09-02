@@ -25,6 +25,8 @@
 #include <stdarg.h>
 #include <string.h>
 #include <math.h>
+#include <string>
+#include <vector>
 
 #include <stdio.h>
 #include "libretro.h"
@@ -103,12 +105,15 @@ static bool IsJoypadDevice(unsigned device)
 static GearboyCore* core;
 static Cartridge::CartridgeTypes mapper = Cartridge::CartridgeNotSupported;
 static const retro_vfs_interface* vfs_interface = NULL;
+static std::vector<std::string> libretro_cheats;
 
 static retro_environment_t environ_cb;
 
 static void reset_controller_device(void);
 static void apply_controller_device(unsigned port, unsigned device, bool log_device);
 static bool load_rom(const struct retro_game_info* info);
+static void apply_cheats(void);
+static void clear_cheats(void);
 
 // red, green, blue
 static GB_Color original_palette[4] = {{0x87, 0x96, 0x03},{0x4D, 0x6B, 0x03},{0x2B, 0x55, 0x03},{0x14, 0x44, 0x03}};
@@ -161,6 +166,7 @@ void retro_init(void)
 
 void retro_deinit(void)
 {
+    clear_cheats();
     SafeDeleteArray(gearboy_frame_buf);
     SafeDelete(core);
     vfs_interface = NULL;
@@ -242,7 +248,7 @@ void retro_get_system_av_info(struct retro_system_av_info *info)
     info->geometry.max_width    = VIDEO_WIDTH;
     info->geometry.max_height   = VIDEO_HEIGHT;
     info->geometry.aspect_ratio = aspect;
-    info->timing.fps            = GEARBOY_MASTER_CLOCK_RATE / 70224.0;
+    info->timing.fps            = rt_info.fps;
     info->timing.sample_rate    = 44100.0f;
 }
 
@@ -516,19 +522,16 @@ static void update_input(void)
         {
             float ax = sensor_interface.get_sensor_input(0, RETRO_SENSOR_ACCELEROMETER_X);
             float az = sensor_interface.get_sensor_input(0, RETRO_SENSOR_ACCELEROMETER_Z);
-            if (ax != 0.0f || az != 0.0f)
-            {
-                int sx = MAX(sensor_sensitivity_x, 1);
-                int sy = MAX(sensor_sensitivity_y, 1);
-                libretro_tilt_x = ax * (float)sx / 5.0f;
-                libretro_tilt_y = az * (float)sy / 5.0f;
-                if (sensor_invert_x)
-                    libretro_tilt_x = -libretro_tilt_x;
-                if (sensor_invert_y)
-                    libretro_tilt_y = -libretro_tilt_y;
-                libretro_tilt_x = CLAMP(libretro_tilt_x, -4.0f, 4.0f);
-                libretro_tilt_y = CLAMP(libretro_tilt_y, -4.0f, 4.0f);
-            }
+            int sx = MAX(sensor_sensitivity_x, 1);
+            int sy = MAX(sensor_sensitivity_y, 1);
+            libretro_tilt_x = ax * (float)sx / 5.0f;
+            libretro_tilt_y = az * (float)sy / 5.0f;
+            if (sensor_invert_x)
+                libretro_tilt_x = -libretro_tilt_x;
+            if (sensor_invert_y)
+                libretro_tilt_y = -libretro_tilt_y;
+            libretro_tilt_x = CLAMP(libretro_tilt_x, -4.0f, 4.0f);
+            libretro_tilt_y = CLAMP(libretro_tilt_y, -4.0f, 4.0f);
         }
     }
     else if (tilt_source == 2)
@@ -623,6 +626,8 @@ static void check_variables(void)
             mapper = Cartridge::CartridgeMBC3;
         else if (strcmp(var.value, "MBC 5") == 0)
             mapper = Cartridge::CartridgeMBC5;
+        else if (strcmp(var.value, "MBC 6") == 0)
+            mapper = Cartridge::CartridgeMBC6;
         else if (strcmp(var.value, "MBC 1 Multicart") == 0)
             mapper = Cartridge::CartridgeMBC1Multi;
         else if (strcmp(var.value, "HuC 1") == 0)
@@ -853,6 +858,17 @@ static void check_variables(void)
         core->EnableColorCorrection(color_correction);
     }
 
+    var.key = "gearboy_no_sprite_limit";
+    var.value = NULL;
+
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        if (strcmp(var.value, "Enabled") == 0)
+            core->GetVideo()->SetNoSpriteLimit(true);
+        else
+            core->GetVideo()->SetNoSpriteLimit(false);
+    }
+
     var.key = "gearboy_up_down_allowed";
     var.value = NULL;
 
@@ -905,6 +921,7 @@ void retro_reset(void)
 
 bool retro_load_game(const struct retro_game_info *info)
 {
+    clear_cheats();
     core->GetCartridge()->Reset();
     environ_cb(RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE, &sensor_interface);
     check_variables();
@@ -949,6 +966,7 @@ bool retro_load_game(const struct retro_game_info *info)
     memset(descs, 0, sizeof(descs));
 
     MemoryRule* current_rule = core->GetMemory()->GetCurrentRule();
+    bool mbc6 = current_rule->GetMapperType() == Cartridge::CartridgeMBC6;
     size_t cart_ram_size = current_rule->GetRamSize();
     size_t cart_ram_bank_size = (cart_ram_size < 0x2000) ? cart_ram_size : 0x2000;
 
@@ -972,6 +990,7 @@ bool retro_load_game(const struct retro_game_info *info)
     descs[4].ptr   = (cart_ram_bank_size > 0) ? current_rule->GetCurrentRamBank() : NULL;
     descs[4].start = 0xA000;
     descs[4].len   = cart_ram_bank_size;
+    descs[4].flags = mbc6 ? RETRO_MEMDESC_CONST : 0;
     // VRAM
     descs[5].ptr   = core->GetMemory()->GetMemoryMap() + 0x8000; // todo: fix GBC
     descs[5].start = 0x8000;
@@ -984,6 +1003,7 @@ bool retro_load_game(const struct retro_game_info *info)
     descs[7].ptr   = current_rule->GetCurrentRomBank1();
     descs[7].start = 0x4000;
     descs[7].len   = 0x4000;
+    descs[7].flags = mbc6 ? RETRO_MEMDESC_CONST : 0;
     // OAM
     descs[8].ptr   = core->GetMemory()->GetMemoryMap() + 0xFE00;
     descs[8].start = 0xFE00;
@@ -1059,6 +1079,7 @@ static bool load_rom(const struct retro_game_info* info)
 
 void retro_unload_game(void)
 {
+    clear_cheats();
 }
 
 unsigned retro_get_region(void)
@@ -1120,13 +1141,42 @@ size_t retro_get_memory_size(unsigned id)
     return 0;
 }
 
-void retro_cheat_reset(void)
+static void apply_cheats(void)
 {
     core->ClearCheats();
+
+    for (size_t i = 0; i < libretro_cheats.size(); i++)
+    {
+        if (!libretro_cheats[i].empty())
+            core->SetCheat(libretro_cheats[i].c_str());
+    }
+}
+
+static void clear_cheats(void)
+{
+    libretro_cheats.clear();
+    if (IsValidPointer(core))
+        core->ClearCheats();
+}
+
+void retro_cheat_reset(void)
+{
+    clear_cheats();
 }
 
 void retro_cheat_set(unsigned index, bool enabled, const char *code)
 {
     if (enabled)
-        core->SetCheat(code);
+    {
+        if (index >= libretro_cheats.size())
+            libretro_cheats.resize(index + 1);
+
+        libretro_cheats[index] = code ? code : "";
+    }
+    else if (index < libretro_cheats.size())
+    {
+        libretro_cheats[index].clear();
+    }
+
+    apply_cheats();
 }

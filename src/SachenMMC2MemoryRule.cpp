@@ -223,7 +223,7 @@ void SachenMMC2MemoryRule::PerformWrite(u16 address, u8 value)
             {
                 m_BaseBank = value;
                 SwitchROMBank0(m_BaseBank & m_Mask);
-                TraceBankSwitch(address, value);
+                TraceMapperEvent(address, value);
             }
             break;
         }
@@ -234,7 +234,7 @@ void SachenMMC2MemoryRule::PerformWrite(u16 address, u8 value)
                 m_OuterBankOffset = (value & 0x01) << 4;
                 SwitchROMBank0(0);
                 SwitchROMBank1(m_UnmaskedBank == 0 ? 1 : m_UnmaskedBank);
-                TraceBankSwitch(address, value);
+                TraceMapperEvent(address, value);
                 break;
             }
 
@@ -245,7 +245,7 @@ void SachenMMC2MemoryRule::PerformWrite(u16 address, u8 value)
             m_UnmaskedBank = bank;
             bank = (bank & ~m_Mask) | (m_BaseBank & m_Mask);
             SwitchROMBank1(bank);
-            TraceBankSwitch(address, value);
+            TraceMapperEvent(address, value);
             break;
         }
         case 0x4000:
@@ -256,7 +256,7 @@ void SachenMMC2MemoryRule::PerformWrite(u16 address, u8 value)
                 u8 bank = (m_UnmaskedBank & ~m_Mask) | (m_BaseBank & m_Mask);
                 SwitchROMBank1(bank);
                 SwitchROMBank0(m_BaseBank & m_Mask);
-                TraceBankSwitch(address, value);
+                TraceMapperEvent(address, value);
             }
             break;
         }
@@ -269,7 +269,9 @@ void SachenMMC2MemoryRule::PerformWrite(u16 address, u8 value)
             if ((m_iRAMBytesSize > 0) && IsValidPointer(m_pRAMBanks))
                 m_pRAMBanks[(address - 0xA000) & (m_iRAMBytesSize - 1)] = value;
             else
+            {
                 Debug("--> ** Attempting to write to RAM without ram in cart  %X %X", address, value);
+            }
             break;
         }
         default:

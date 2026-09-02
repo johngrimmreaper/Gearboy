@@ -20,9 +20,11 @@
 #define GUI_MENUS_IMPORT
 #include "gui_menus.h"
 #include "gui.h"
+#include "gui_cheats.h"
 #include "gui_filedialogs.h"
 #include "gui_popups.h"
 #include "gui_actions.h"
+#include "gui_debug_widgets.h"
 #include "config.h"
 #include "application.h"
 #include "display.h"
@@ -52,6 +54,9 @@ static bool open_dmg_bootrom = false;
 static bool open_gbc_bootrom = false;
 static bool save_debug_settings = false;
 static bool load_debug_settings = false;
+static const ImVec4 service_link_color(0.39f, 0.58f, 0.93f, 1.0f);
+static const ImVec4 service_mcp_http_color(0.10f, 0.90f, 0.10f, 1.0f);
+static const ImVec4 service_mcp_stdio_color(0.90f, 0.70f, 0.10f, 1.0f);
 static ShaderPresetInfo shader_presets[SHADER_PRESET_MAX_DISCOVERED];
 static int shader_preset_count = 0;
 
@@ -65,10 +70,11 @@ static bool shader_parameter_is_integer(const ShaderPresetParameter* parameter);
 static int shader_parameter_round_to_int(float value);
 static void menu_input(void);
 static void menu_audio(void);
+static void menu_link_cable(void);
 static void menu_debug(void);
 static void menu_about(void);
 static void draw_background_color_menu(const char* label, int theme);
-static void draw_mcp_status(void);
+static void draw_service_status(void);
 static void file_dialogs(void);
 static void keyboard_configuration_item(const char* text, SDL_Scancode* key, int player);
 static void gamepad_configuration_item(const char* text, int* button, int player);
@@ -147,9 +153,10 @@ void gui_main_menu(void)
         menu_video();
         menu_input();
         menu_audio();
+        menu_link_cable();
         menu_debug();
         menu_about();
-        draw_mcp_status();
+        draw_service_status();
 
         gui_main_menu_height = (int)ImGui::GetWindowSize().y;
 
@@ -165,6 +172,7 @@ static void menu_gearboy(void)
     {
         gui_in_use = true;
         bool media_actions_enabled = !emu_is_empty();
+        bool link_cable_active = emu_link_cable_is_active();
 
         if (ImGui::MenuItem("Open ROM...", config_hotkeys[config_HotkeyIndex_OpenROM].str))
         {
@@ -191,6 +199,11 @@ static void menu_gearboy(void)
         }
 
         ImGui::Separator();
+        ImGui::MenuItem("Enable Softpatching", "", &config_emulator.softpatching);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Automatically applies a matching .ips patch next to the ROM when loading.");
+
+        ImGui::Separator();
         
         if (ImGui::MenuItem("Reset", config_hotkeys[config_HotkeyIndex_Reset].str, false, media_actions_enabled))
         {
@@ -204,12 +217,12 @@ static void menu_gearboy(void)
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Fast Forward", config_hotkeys[config_HotkeyIndex_FFWD].str, &config_emulator.ffwd, media_actions_enabled))
+        if (ImGui::MenuItem("Fast Forward", config_hotkeys[config_HotkeyIndex_FFWD].str, &config_emulator.ffwd, media_actions_enabled && !link_cable_active))
         {
             gui_action_ffwd();
         }
 
-        if (ImGui::BeginMenu("Fast Forward Speed"))
+        if (ImGui::BeginMenu("Fast Forward Speed", !link_cable_active))
         {
             ImGui::PushItemWidth(100.0f);
             ImGui::Combo("##fwd", &config_emulator.ffwd_speed, "X 1.5\0X 2\0X 2.5\0X 3\0Unlimited\0\0");
@@ -217,7 +230,7 @@ static void menu_gearboy(void)
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Rewind"))
+        if (ImGui::BeginMenu("Rewind", !link_cable_active))
         {
             if (ImGui::MenuItem("Enabled", config_hotkeys[config_HotkeyIndex_Rewind].str, &config_rewind.enabled))
                 rewind_reset();
@@ -229,7 +242,7 @@ static void menu_gearboy(void)
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Run-Ahead"))
+        if (ImGui::BeginMenu("Run-Ahead", !link_cable_active))
         {
             ImGui::PushItemWidth(140.0f);
             ImGui::Combo("##runahead", &config_emulator.runahead, "Disabled\0" "1 Frame\0" "2 Frames\0" "3 Frames\0\0");
@@ -268,7 +281,7 @@ static void menu_gearboy(void)
             save_state = true;
         }
 
-        if (ImGui::MenuItem("Load State From...", "", false, media_actions_enabled))
+        if (ImGui::MenuItem("Load State From...", "", false, media_actions_enabled && !link_cable_active))
         {
             open_state = true;
         }
@@ -295,7 +308,7 @@ static void menu_gearboy(void)
             emu_save_state_slot(config_emulator.save_slot + 1);
         }
 
-        if (ImGui::MenuItem("Load State", config_hotkeys[config_HotkeyIndex_LoadState].str, false, media_actions_enabled))
+        if (ImGui::MenuItem("Load State", config_hotkeys[config_HotkeyIndex_LoadState].str, false, media_actions_enabled && !link_cable_active))
         {
             std::string message("Loading state from slot ");
             message += std::to_string(config_emulator.save_slot + 1);
@@ -490,7 +503,7 @@ static void menu_emulator(void)
             ImGui::Separator();
             if (strlen(gui_dmg_bootrom_path) > 0)
             {
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "DMG Boot ROM loaded");
+                ImGui::TextColored(service_mcp_http_color, "DMG Boot ROM loaded");
             }
             else
             {
@@ -523,7 +536,7 @@ static void menu_emulator(void)
             ImGui::Separator();
             if (strlen(gui_gbc_bootrom_path) > 0)
             {
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "GBC Boot ROM loaded");
+                ImGui::TextColored(service_mcp_http_color, "GBC Boot ROM loaded");
             }
             else
             {
@@ -553,67 +566,15 @@ static void menu_emulator(void)
         if (ImGui::BeginMenu("Memory Bank Controller"))
         {
             ImGui::PushItemWidth(140.0f);
-            ImGui::Combo("##mbc", &config_emulator.mbc, "Auto\0ROM Only\0MBC 1\0MBC 2\0MBC 3\0MBC 5\0MBC 1 Multicart\0HuC 1\0HuC 3\0MMM01\0Camera\0MBC 7\0TAMA5\0Wisdom Tree\0M161\0Sachen MMC1\0Sachen MMC2\0PKJD\0Bung/EMS\0Poke 2-in-1\0\0");
+            ImGui::Combo("##mbc", &config_emulator.mbc, "Auto\0ROM Only\0MBC 1\0MBC 2\0MBC 3\0MBC 5\0MBC 1 Multicart\0HuC 1\0HuC 3\0MMM01\0Camera\0MBC 7\0TAMA5\0Wisdom Tree\0M161\0Sachen MMC1\0Sachen MMC2\0PKJD\0Bung/EMS\0Poke 2-in-1\0MBC 6\0\0");
             ImGui::PopItemWidth();
             ImGui::EndMenu();
         }
 
         ImGui::Separator();
 
-        ImGui::SetNextWindowSizeConstraints({300.0f, 200.0f}, {300.0f, 500.0f});
-        if (ImGui::BeginMenu("Cheats"))
-        {
-            ImGui::Text("Game Genie or GameShark codes\n(one code per line):");
-
-            ImGui::Columns(2, "cheats", false);
-
-            static char cheat_buffer[20*50] = "";
-            ImGui::PushItemWidth(150);
-            ImGui::InputTextMultiline("##cheats_input", cheat_buffer, IM_ARRAYSIZE(cheat_buffer));
-            ImGui::PopItemWidth();
-
-            ImGui::NextColumn();
-
-            if (ImGui::Button("Add Cheat Code"))
-            {
-                std::string cheats = cheat_buffer;
-                std::istringstream ss(cheats);
-                std::string cheat;
-
-                while (getline(ss, cheat))
-                {
-                    if ((gui_cheat_list.size() < 50) && ((cheat.length() == 7) || (cheat.length() == 11) || (cheat.length() == 8) || (cheat.length() == 9)))
-                    {
-                        gui_cheat_list.push_back(cheat);
-                        emu_add_cheat(cheat.c_str());
-                        cheat_buffer[0] = 0;
-                    }
-                }
-            }
-
-            if (gui_cheat_list.size() > 0)
-            {
-                if (ImGui::Button("Clear All"))
-                {
-                    gui_cheat_list.clear();
-                    emu_clear_cheats();
-                }
-            }
-
-            ImGui::Columns(1);
-
-            std::list<std::string>::iterator it;
-
-            for (it = gui_cheat_list.begin(); it != gui_cheat_list.end(); it++)
-            {
-                if ((it->length() == 7) || (it->length() == 11))
-                    ImGui::Text("Game Genie: %s", it->c_str());
-                else
-                    ImGui::Text("GameShark: %s", it->c_str());
-            }
-
-            ImGui::EndMenu();
-        }
+        if (ImGui::MenuItem("Cheats...", "", false, !emu_is_empty()))
+            gui_cheats_show();
 
         ImGui::MenuItem("Show ROM info", "", &config_emulator.show_info);
         ImGui::MenuItem("Status Messages", "", &config_emulator.status_messages);
@@ -741,7 +702,7 @@ static void menu_video(void)
             ImGui::PushItemWidth(250.0f);
             ImGui::Combo("##scale", &config_video.scale, "Integer Scale (Auto)\0Integer Scale (Manual)\0Scale to Window Height\0Scale to Window Width & Height\0\0");
             if (config_video.scale == 1)
-                ImGui::SliderInt("##scale_manual", &config_video.scale_manual, 1, 10);
+                ImGui::SliderInt("##scale_manual", &config_video.scale_manual, 1, 20);
             ImGui::PopItemWidth();
             ImGui::EndMenu();
         }
@@ -758,11 +719,12 @@ static void menu_video(void)
 
         if (ImGui::BeginMenu("Vertical Sync"))
         {
-            ImGui::PushItemWidth(240.0f);
 #if defined(_WIN32)
-            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0Variable Refresh Rate (VRR)\0\0"))
+            ImGui::PushItemWidth(220.0f);
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed Vertical Sync\0Variable Refresh Rate (VRR)\0\0"))
 #else
-            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0\0"))
+            ImGui::PushItemWidth(100.0f);
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Enabled\0\0"))
 #endif
             {
                 if (config_video.sync_mode != config_VideoSync_Disabled)
@@ -776,19 +738,18 @@ static void menu_video(void)
             }
             ImGui::PopItemWidth();
 
+#if defined(_WIN32)
             if (ImGui::IsItemHovered())
             {
                 ImGui::BeginTooltip();
                 ImGui::Text("Disabled: do not synchronize presentation to the monitor.");
-                ImGui::Text("Fixed: use normal VSync for 60 Hz, 120 Hz, and 240 Hz displays.");
-#if defined(_WIN32)
+                ImGui::Text("Fixed Vertical Sync: use normal VSync.");
                 ImGui::Text("VRR: present at the Game Boy frame rate.");
-                ImGui::Text("VRR requires fullscreen, a VRR display, and G-SYNC,");
+                ImGui::Text("\nVRR requires fullscreen, a VRR display, and G-SYNC,");
                 ImGui::Text("FreeSync, or Adaptive Sync enabled in your monitor and GPU driver settings.");
-#endif
                 ImGui::EndTooltip();
             }
-
+#endif
             ImGui::EndMenu();
         }
 
@@ -802,6 +763,13 @@ static void menu_video(void)
         }
 
         menu_shader();
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Disable Sprite Limit", "", &config_video.sprite_limit))
+        {
+            emu_video_no_sprite_limit(config_video.sprite_limit);
+        }
 
         ImGui::Separator();
 
@@ -1287,6 +1255,115 @@ static void menu_audio(void)
     }
 }
 
+static void menu_link_cable(void)
+{
+    if (!ImGui::BeginMenu("Link Cable"))
+        return;
+
+    gui_in_use = true;
+    LinkCableStatus status = emu_link_cable_get_status();
+    bool active = emu_link_cable_is_active();
+    const ImVec4 error_red(0.98f, 0.15f, 0.45f, 1.0f);
+
+#if defined(__APPLE__)
+    if (ImGui::MenuItem("New " GEARBOY_TITLE " Window", "", false,
+        application_can_launch_new_instance()))
+    {
+        application_launch_new_instance();
+    }
+    ImGui::Separator();
+#endif
+
+    if (ImGui::MenuItem("Connect", NULL, false, !active))
+        emu_link_cable_connect(config_emulator.link_cable_session);
+    if (ImGui::MenuItem("Disconnect", NULL, false,
+        status.mode != LinkCableModeDisabled))
+        emu_link_cable_stop();
+
+    ImGui::Separator();
+
+    switch (status.mode)
+    {
+        case LinkCableModeConnected:
+            ImGui::TextColored(service_link_color, "Session %u active", status.session);
+            if (status.peer_count > 1)
+            {
+                ImGui::TextDisabled("Peer %d of %d - connected",
+                    status.local_peer_id, status.peer_count);
+            }
+            else
+            {
+                ImGui::TextDisabled("Peer %d - waiting for remote peer",
+                    status.local_peer_id);
+            }
+            break;
+        case LinkCableModeFault:
+            ImGui::TextColored(error_red, "%s", status.last_error);
+            break;
+        default:
+            ImGui::TextColored(error_red, "Disconnected");
+            break;
+    }
+
+    ImGui::Separator();
+
+    ImGui::BeginDisabled(active);
+    ImGui::Text("Session:");
+    ImGui::SameLine(110.0f);
+    ImGui::SetNextItemWidth(60.0f);
+    if (ImGui::InputInt("##link_cable_session",
+        &config_emulator.link_cable_session, 0, 0))
+    {
+        config_emulator.link_cable_session = CLAMP(
+            config_emulator.link_cable_session, 1, 255);
+    }
+    ImGui::EndDisabled();
+
+    ImGui::Separator();
+
+#if defined(_WIN32)
+    const int stall_min = 1000;
+    const int stall_max = 10000;
+    const int stall_step = 250;
+    const int stall_default = 5000;
+#elif defined(__APPLE__)
+    const int stall_min = 50;
+    const int stall_max = 1000;
+    const int stall_step = 50;
+    const int stall_default = 100;
+#else
+    const int stall_min = 50;
+    const int stall_max = 2000;
+    const int stall_step = 50;
+    const int stall_default = 250;
+#endif
+
+    if (ImGui::BeginMenu("Stall Threshold"))
+    {
+        ImGui::PushItemWidth(180.0f);
+        if (SliderIntWithSteps("##link_cable_stall",
+            &config_emulator.link_cable_stall_us, stall_min, stall_max,
+            stall_step, "%d us"))
+        {
+            emu_link_cable_set_normal_barrier_stall_us(
+                (u32)config_emulator.link_cable_stall_us);
+        }
+        ImGui::PopItemWidth();
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::Text("Lower values reduce CPU usage but may cause stalls.");
+            ImGui::Text("Higher values tolerate scheduling delays but use more CPU.");
+            ImGui::NewLine();
+            ImGui::Text("Recommended: %d us", stall_default);
+            ImGui::EndTooltip();
+        }
+        ImGui::EndMenu();
+    }
+
+    ImGui::EndMenu();
+}
+
 static void menu_debug(void)
 {
 #if !defined(GEARBOY_DISABLE_DISASSEMBLER)
@@ -1318,7 +1395,8 @@ static void menu_debug(void)
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Reload ROM", config_hotkeys[config_HotkeyIndex_ReloadROM].str, false, config_debug.debug && !emu_is_empty()))
+        bool can_reload_rom = !emu_is_empty() || !config_emulator.recent_roms[0].empty();
+        if (ImGui::MenuItem("Reload ROM", config_hotkeys[config_HotkeyIndex_ReloadROM].str, false, config_debug.debug && can_reload_rom))
         {
             gui_action_reload_rom();
         }
@@ -1349,9 +1427,10 @@ static void menu_debug(void)
             ImGui::Separator();
 
             if (stdio_running)
-                ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.10f, 1.0f), "STDIO mode active");
+                ImGui::TextColored(service_mcp_stdio_color, "STDIO mode active");
             else if (http_running)
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "Listening on %s:%d", config_emulator.mcp_http_address.c_str(), config_emulator.mcp_tcp_port);
+                ImGui::TextColored(service_mcp_http_color, "Listening on %s:%d",
+                    emu_mcp_get_http_address(), emu_mcp_get_http_port());
             else
                 ImGui::TextColored(ImVec4(0.98f, 0.15f, 0.45f, 1.0f), "Stopped");
 
@@ -1418,6 +1497,10 @@ static void menu_debug(void)
 
         ImGui::MenuItem("Show PSG", "", &config_debug.show_psg);
         ImGui::MenuItem("Show IO Map", "", &config_debug.show_io, config_debug.debug);
+        ImGui::MenuItem("Show Link Cable", "", &config_debug.show_link_cable,
+            config_debug.debug);
+        ImGui::MenuItem("Show Link Cable (Transport)", "",
+            &config_debug.show_link_cable_transport, config_debug.debug);
 
         if (ImGui::BeginMenu("Super Game Boy", config_debug.debug && emu_get_core()->IsSGB()))
         {
@@ -1478,32 +1561,69 @@ static void menu_about(void)
     }
 }
 
-static void draw_mcp_status(void)
+static void draw_service_status(void)
 {
-    if (!emu_mcp_is_running())
+    bool mcp_running = emu_mcp_is_running();
+    LinkCableStatus link = emu_link_cable_get_status();
+    bool link_active = link.mode == LinkCableModeConnected;
+
+    if (!mcp_running && !link_active)
         return;
 
-    char status[128];
-    ImVec4 color(0.10f, 0.90f, 0.10f, 1.0f);
+    char link_status[64] = {};
+    char mcp_status[128] = {};
+    bool show_link_status = false;
+    bool show_mcp_status = false;
+    ImVec4 mcp_color = service_mcp_http_color;
 
-    int transport_mode = emu_mcp_get_transport_mode();
-    if (transport_mode == 0)
+    if (link_active)
     {
-        snprintf(status, sizeof(status), "MCP: STDIO");
-        color = ImVec4(0.90f, 0.70f, 0.10f, 1.0f);
+        if (link.peer_count > 1)
+        {
+            snprintf(link_status, sizeof(link_status), "LINK: S%u P%d/%d",
+                link.session, link.local_peer_id, link.peer_count);
+        }
+        else
+        {
+            snprintf(link_status, sizeof(link_status), "LINK: S%u WAITING",
+                link.session);
+        }
+        show_link_status = true;
     }
-    else if (transport_mode == 1)
+
+    if (mcp_running)
     {
-        snprintf(status, sizeof(status), "MCP: HTTP (%s:%d)", config_emulator.mcp_http_address.c_str(), config_emulator.mcp_tcp_port);
-    }
-    else
-    {
-        return;
+        int transport_mode = emu_mcp_get_transport_mode();
+        if (transport_mode == 0)
+        {
+            snprintf(mcp_status, sizeof(mcp_status), "MCP: STDIO");
+            mcp_color = service_mcp_stdio_color;
+            show_mcp_status = true;
+        }
+        else if (transport_mode == 1)
+        {
+            snprintf(mcp_status, sizeof(mcp_status), "MCP: HTTP (%s:%d)",
+                config_emulator.mcp_http_address.c_str(),
+                config_emulator.mcp_tcp_port);
+            show_mcp_status = true;
+        }
     }
 
     ImGuiStyle& style = ImGui::GetStyle();
-    float text_width = ImGui::CalcTextSize(status).x;
-    float status_x = ImGui::GetWindowWidth() - text_width - style.ItemSpacing.x - 10.0f;
+    float spacing = style.ItemSpacing.x * 2.0f;
+    float text_width = 0.0f;
+
+    if (show_link_status)
+        text_width += ImGui::CalcTextSize(link_status).x;
+    if (show_mcp_status)
+    {
+        if (text_width > 0.0f)
+            text_width += spacing;
+        text_width += ImGui::CalcTextSize(mcp_status).x;
+    }
+
+    float status_x = ImGui::GetWindowWidth() - text_width -
+        style.ItemSpacing.x - 10.0f;
     float cursor_x = ImGui::GetCursorPosX();
 
     if (status_x <= cursor_x + style.ItemSpacing.x)
@@ -1511,7 +1631,16 @@ static void draw_mcp_status(void)
 
     ImGui::SameLine(status_x);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(color, "%s", status);
+
+    if (show_link_status)
+        ImGui::TextColored(service_link_color, "%s", link_status);
+
+    if (show_mcp_status)
+    {
+        if (show_link_status)
+            ImGui::SameLine(0.0f, spacing);
+        ImGui::TextColored(mcp_color, "%s", mcp_status);
+    }
 }
 
 static void file_dialogs(void)

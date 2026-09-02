@@ -62,6 +62,7 @@
 //#define GEARBOY_DISABLE_DISASSEMBLER
 
 #define MAX_ROM_SIZE 0x800000
+#define MAX_ROM_DISASSEMBLY_SIZE 0x900000
 
 #define SafeDelete(pointer) if(pointer != NULL) {delete pointer; pointer = NULL;}
 #define SafeDeleteArray(pointer) if(pointer != NULL) {delete [] pointer; pointer = NULL;}
@@ -80,6 +81,14 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLAMP(value, min, max) MIN(MAX(value, min), max)
+
+#if defined(__GNUC__) || defined(__clang__)
+    #define likely(x)   __builtin_expect(!!(x), 1)
+    #define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+    #define likely(x)   (x)
+    #define unlikely(x) (x)
+#endif
 
 typedef uint8_t u8;
 typedef int8_t s8;
@@ -118,9 +127,10 @@ typedef void (*RamChangedCallback) (void);
 #define SAVESTATE_MAGIC 0x28011983
 
 #define GB_SAVESTATE_MAGIC 0x28011983
-#define GB_SAVESTATE_VERSION 103
+#define GB_SAVESTATE_VERSION 104
 #define GB_SAVESTATE_MIN_VERSION 100
 #define GB_SAVESTATE_LEGACY_VERSION 0
+#define GB_SAVESTATE_MBC6_VERSION 104
 
 static const u16 kTACTriggerBits[] = {512, 8, 32, 128};
 
@@ -183,6 +193,7 @@ struct GB_RuntimeInfo
 {
     int screen_width;
     int screen_height;
+    double fps;
 };
 
 enum GB_Disassembler_Syntax
@@ -254,12 +265,15 @@ inline int AsHex(const char c)
 #if defined(__GNUC__) || defined(__clang__)
     #define INLINE inline __attribute__((always_inline))
     #define NO_INLINE __attribute__((noinline))
+    #define COLD __attribute__((cold))
 #elif defined(_MSC_VER)
     #define INLINE __forceinline
     #define NO_INLINE __declspec(noinline)
+    #define COLD
 #else
     #define INLINE inline
     #define NO_INLINE
+    #define COLD
 #endif
 
 #if !defined(DEBUG_GEARBOY)

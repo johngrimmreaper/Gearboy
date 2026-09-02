@@ -41,6 +41,8 @@ public:
     virtual ~MemoryRule();
     virtual u8 PerformRead(u16 address) = 0;
     virtual void PerformWrite(u16 address, u8 value) = 0;
+    virtual bool MapsROMDirectly();
+    virtual u8 GetMapperType();
     virtual bool NeedsHighMemoryAccessNotifications();
     virtual void NotifyHighMemoryRead(u16 address);
     virtual void NotifyHighMemoryWrite(u16 address, u8 value);
@@ -53,16 +55,22 @@ public:
     virtual u8* GetRamBanks();
     virtual u8* GetCurrentRamBank();
     virtual int GetCurrentRamBankIndex();
+    virtual int GetCurrentRamBankIndex(u16 address);
     virtual u8* GetRomBank0();
     virtual int GetCurrentRomBank0Index();
     virtual u8* GetCurrentRomBank1();
     virtual int GetCurrentRomBank1Index();
+    virtual u16 GetCurrentRomBankIndex(u16 address);
+    virtual u32 GetPhysicalROMAddress(u16 address);
+    virtual u32 GetPhysicalROMAddress(u16 address, u16 bank);
     virtual u8* GetRTCMemory();
     virtual void SaveState(std::ostream& stream);
     virtual void LoadState(std::istream& stream);
 
 protected:
-    INLINE void TraceBankSwitch(u16 address, u8 value);
+    INLINE void TraceMapperEvent(u16 address, u8 value, u8 event = 0xFF);
+    INLINE bool IsTraceMapperEventEnabled(u8 event) const;
+    NO_INLINE void LogTraceMapperEvent(u16 address, u8 value, u8 event, u8 flags, bool flags_valid);
 
     Processor* m_pProcessor;
     Memory* m_pMemory;
@@ -75,20 +83,38 @@ protected:
     TraceLogger* m_pTraceLogger;
 };
 
-INLINE void MemoryRule::TraceBankSwitch(u16 address, u8 value)
+INLINE void MemoryRule::TraceMapperEvent(u16 address, u8 value, u8 event)
 {
 #if !defined(GEARBOY_DISABLE_DISASSEMBLER)
-    if (m_pTraceLogger && m_pTraceLogger->IsEnabled(TRACE_BANK_SWITCH))
+    if (!m_pTraceLogger->IsEnabled(TRACE_MAPPER))
+        return;
+
+    if (event == 0xFF)
     {
-        GB_Trace_Entry e = {};
-        e.type = TRACE_BANK_SWITCH;
-        e.bank_switch.address = address;
-        e.bank_switch.value = value;
-        m_pTraceLogger->TraceLog(e);
+        if (address < 0x2000 || address >= 0x6000)
+            event = TRACE_MAPPER_CONTROL;
+        else if (address < 0x4000)
+            event = TRACE_MAPPER_ROM;
+        else
+            event = TRACE_MAPPER_RAM_RTC;
     }
+
+    if (m_pTraceLogger->IsEventEnabled(TRACE_MAPPER, event))
+        LogTraceMapperEvent(address, value, event, 0, false);
 #else
     UNUSED(address);
     UNUSED(value);
+    UNUSED(event);
+#endif
+}
+
+INLINE bool MemoryRule::IsTraceMapperEventEnabled(u8 event) const
+{
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    return m_pTraceLogger->IsEventEnabled(TRACE_MAPPER, event);
+#else
+    UNUSED(event);
+    return false;
 #endif
 }
 

@@ -21,6 +21,7 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/application_headless.cpp \
     $(DESKTOP_SRC_DIR)/config.cpp \
     $(DESKTOP_SRC_DIR)/gui.cpp \
+    $(DESKTOP_SRC_DIR)/gui_cheats.cpp \
     $(DESKTOP_SRC_DIR)/gui_filedialogs.cpp \
     $(DESKTOP_SRC_DIR)/gui_menus.cpp \
     $(DESKTOP_SRC_DIR)/gui_popups.cpp \
@@ -33,6 +34,7 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/events.cpp \
     $(DESKTOP_SRC_DIR)/gamepad.cpp \
     $(DESKTOP_SRC_DIR)/emu.cpp \
+    $(DESKTOP_SRC_DIR)/link_cable/link_cable_manager.cpp \
     $(DESKTOP_SRC_DIR)/rewind.cpp \
     $(DESKTOP_SRC_DIR)/runahead.cpp \
     $(DESKTOP_SRC_DIR)/sound_queue.cpp \
@@ -43,10 +45,12 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/gui_debug_memory.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_memeditor.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_trace_logger.cpp \
+    $(DESKTOP_SRC_DIR)/trace_logger_formatter.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_processor.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_video.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_io.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_psg.cpp \
+    $(DESKTOP_SRC_DIR)/gui_debug_link_cable.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_sgb.cpp \
     $(DESKTOP_SRC_DIR)/mcp/mcp_debug_adapter.cpp \
     $(DESKTOP_SRC_DIR)/mcp/mcp_tool_registry.cpp \
@@ -61,6 +65,7 @@ SOURCES_CXX := \
     $(SRC_DIR)/MBC2MemoryRule.cpp \
     $(SRC_DIR)/MBC3MemoryRule.cpp \
     $(SRC_DIR)/MBC5MemoryRule.cpp \
+    $(SRC_DIR)/MBC6MemoryRule.cpp \
     $(SRC_DIR)/Memory.cpp \
     $(SRC_DIR)/MemoryRule.cpp \
     $(SRC_DIR)/MultiMBC1MemoryRule.cpp \
