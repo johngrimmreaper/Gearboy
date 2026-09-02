@@ -36,6 +36,11 @@ MBC2MemoryRule::~MBC2MemoryRule()
 {
 }
 
+bool MBC2MemoryRule::MapsROMDirectly()
+{
+    return true;
+}
+
 void MBC2MemoryRule::Reset(bool bCGB)
 {
     m_bCGB = bCGB;
@@ -87,7 +92,7 @@ void MBC2MemoryRule::PerformWrite(u16 address, u8 value)
                     m_iCurrentROMBank = 1;
                 m_iCurrentROMBank &= (m_pCartridge->GetROMBankCount() - 1);
                 m_CurrentROMAddress = m_iCurrentROMBank * 0x4000;
-                TraceBankSwitch(address, value);
+                TraceMapperEvent(address, value);
             }
             else
             {
@@ -98,6 +103,11 @@ void MBC2MemoryRule::PerformWrite(u16 address, u8 value)
                 if (IsValidPointer(m_pRamChangedCallback) && previous && !m_bRamEnabled)
                 {
                     (*m_pRamChangedCallback)();
+                }
+                if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
+                {
+                    LogTraceMapperEvent(address, value, TRACE_MAPPER_CONTROL,
+                        m_bRamEnabled ? TRACE_MAPPER_FLAG_RAM_ENABLED : 0, true);
                 }
             }
             break;

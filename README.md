@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/drhelius/Gearboy)](https://github.com/drhelius/Gearboy/blob/master/LICENSE)
 [![Twitter Follow](https://img.shields.io/twitter/follow/drhelius)](https://x.com/drhelius)
 
-Gearboy is an accurate, cross-platform Game Boy / Game Boy Color / Super Game Boy emulator written in C++ that runs on Windows, macOS, Linux, BSD and RetroArch, with an embedded MCP server for debugging and tooling.
+Gearboy is an accurate, cross-platform Game Boy / Game Boy Color / Super Game Boy emulator written in C++ that runs on Windows, macOS, Linux, BSD and RetroArch, with an embedded MCP server for AI debugging and development. 
 
 This is an open source project with its ongoing development made possible thanks to the support by these awesome [backers](backers.md). If you find it useful, please consider [sponsoring](https://github.com/sponsors/drhelius).
 
@@ -30,11 +30,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>Desktop x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-windows-x64.zip">Gearboy-3.8.12-desktop-windows-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-windows-x64.zip">Gearboy-3.8.15-desktop-windows-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-windows-arm64.zip">Gearboy-3.8.12-desktop-windows-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-windows-arm64.zip">Gearboy-3.8.15-desktop-windows-arm64.zip</a></td>
     </tr>
     <tr>
       <td rowspan="3"><strong>macOS</strong></td>
@@ -43,11 +43,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Apple Silicon</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-macos-arm64.zip">Gearboy-3.8.12-desktop-macos-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-macos-arm64.zip">Gearboy-3.8.15-desktop-macos-arm64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Intel</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-macos-intel.zip">Gearboy-3.8.12-desktop-macos-intel.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-macos-intel.zip">Gearboy-3.8.15-desktop-macos-intel.zip</a></td>
     </tr>
     <tr>
       <td rowspan="5"><strong>Linux</strong></td>
@@ -60,15 +60,15 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-ubuntu24.04-x64.zip">Gearboy-3.8.12-desktop-ubuntu24.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu24.04-x64.zip">Gearboy-3.8.15-desktop-ubuntu24.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 22.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-ubuntu22.04-x64.zip">Gearboy-3.8.12-desktop-ubuntu22.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu22.04-x64.zip">Gearboy-3.8.15-desktop-ubuntu22.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.12/Gearboy-3.8.12-desktop-ubuntu24.04-arm64.zip">Gearboy-3.8.12-desktop-ubuntu24.04-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu24.04-arm64.zip">Gearboy-3.8.15-desktop-ubuntu24.04-arm64.zip</a></td>
     </tr>
     <tr>
       <td><strong>MCPB</strong></td>
@@ -95,9 +95,10 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 
 ## Features
 
-- Supported cartridges: ROM, ROM + RAM, MBC1, MBC2, MBC3, MBC5, MBC7, HuC-1, HuC-3, MMM01, Pocket Camera, TAMA5, MBC1M, Wisdom Tree, M161, Sachen MMC1, Sachen MMC2 and PKJD.
+- Supported cartridges: ROM, ROM + RAM, MBC1, MBC2, MBC3, MBC5, MBC6, MBC7, HuC-1, HuC-3, MMM01, Pocket Camera, TAMA5, MBC1M, Wisdom Tree, M161, Sachen MMC1, Sachen MMC2 and PKJD.
 - Game Boy Color support.
 - Super Game Boy support.
+- Local two-instance Game Boy link cable support on desktop platforms.
 - LCD screen ghosting effect as seen in the original Game Boy.
 - LCD dot matrix effects. 
 - Battery powered RAM save support.
@@ -123,6 +124,8 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 - **Boot ROM**: Gearboy can run with or without a Boot ROM. You can optionally load a Boot ROM and enable it.
 - **Mouse Cursor**: Automatically hides when hovering over the main output window or when Main Menu is disabled.
 - **Portable Mode**: Run with `--portable`, or create an empty file named `portable.ini` in the same directory as the application binary. On macOS, place the file next to the `.app` bundle.
+- **Link Cable**:
+Open `Link Cable` menu in two desktop instances, select the same session, and connect both, or start each process with `--link-cable-join N`. Independent instances should use separate application copies or `--portable` data directories so configuration, saves, and single-instance handling do not conflict.
 
 ### Debugging Features
 - **Docking Windows**: In debug mode, you can dock windows together by pressing SHIFT and dragging a window onto another.
@@ -135,21 +138,22 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 gearboy [options] [rom_file] [symbol_file]
 
 Arguments:
-  [rom_file]               ROM file: accepts ROMs (.gb, .dmg, .gbc, .cgb, .sgb) or ZIP (.zip)
-  [symbol_file]            Optional symbol file for debugging
+  [rom_file]                  ROM file: accepts ROMs (.gb, .dmg, .gbc, .cgb, .sgb) or ZIP (.zip)
+  [symbol_file]               Optional symbol file for debugging
 
 Options:
-  -f, --fullscreen         Start in fullscreen mode
-  -w, --windowed           Start in windowed mode with menu visible
-      --mcp-stdio          Auto-start MCP server with stdio transport
-      --mcp-http           Auto-start MCP server with HTTP transport
-      --mcp-router         Enable compact MCP tool routing
-      --mcp-http-address A HTTP bind address (default: 127.0.0.1)
-      --mcp-http-port N    HTTP port for MCP server (default: 7777)
-      --headless           Run without GUI (requires --mcp-stdio or --mcp-http)
-        --portable           Store configuration and user data beside the application
-  -v, --version            Display version information
-  -h, --help               Display this help message
+  -f, --fullscreen            Start in fullscreen mode
+  -w, --windowed              Start in windowed mode with menu visible
+      --mcp-stdio             Auto-start MCP server with stdio transport
+      --mcp-http              Auto-start MCP server with HTTP transport
+      --mcp-router            Enable compact MCP tool routing
+      --mcp-http-address A    HTTP bind address (default: 127.0.0.1)
+      --mcp-http-port N       HTTP port for MCP server (default: 7777)
+      --link-cable-join N     Join local link cable session 1-255
+      --headless              Run without GUI (requires MCP or link cable)
+      --portable              Store configuration and user data beside the application
+  -v, --version               Display version information
+  -h, --help                  Display this help message
 ```
 
 ### MCP Server

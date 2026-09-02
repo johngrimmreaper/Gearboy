@@ -41,6 +41,7 @@ struct MemoryAreaInfo
     std::string name;
     u32 size;
     u8* data;
+    bool read_only;
 };
 
 struct RegistersSnapshot
@@ -113,7 +114,7 @@ public:
     // Memory areas (matching debugger memory editor)
     std::vector<MemoryAreaInfo> ListMemoryAreas();
     std::vector<u8> ReadMemoryArea(int area, u32 offset, size_t size);
-    void WriteMemoryArea(int area, u32 offset, const std::vector<u8>& data);
+    bool WriteMemoryArea(int area, u32 offset, const std::vector<u8>& data);
 
     // Disassembly (using existing disassembler records)
     std::vector<DisasmLine> GetDisassembly(u16 start_address, u16 end_address, int bank = -1, bool resolve_symbols = false);
@@ -123,6 +124,8 @@ public:
     json GetLCDRegisters();
     json GetLCDStatus();
     json GetAPUStatus();
+    json GetSerialStatus();
+    json ResetLinkCableMetrics();
     json GetScreenshot();
     json GetSGBStatus();
     json ListSprites();
@@ -173,9 +176,11 @@ public:
     json ListMemoryWatches(int area);
     json MemorySearchCapture(int area);
     json MemorySearch(int area, const std::string& op, const std::string& compare_type, int compare_value, const std::string& data_type);
-    json MemoryFindBytes(int area, const std::string& hex_bytes);
-    json GetTraceLog(int start, int count);
-    json SetTraceLog(bool enabled, u32 flags);
+    json MemoryFind(int area, const std::string& value, bool text, bool case_sensitive);
+    json GetTraceLog(s64 start, int count);
+    json SetTraceLog(bool enabled, u32 flags, const std::string& output,
+        const std::string& memory_size, const std::string& disk_size,
+        const std::string& output_path, const u32* event_filters);
 
     // Core access
     GearboyCore* GetCore() { return m_core; }

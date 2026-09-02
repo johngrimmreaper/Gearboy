@@ -13,6 +13,9 @@
     <ClCompile Include="..\shared\desktop\config.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\link_cable\link_cable_manager.cpp">
+      <Filter>desktop\link_cable</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\emu.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
@@ -26,6 +29,9 @@
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_actions.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\gui_cheats.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_debug.cpp">
@@ -55,10 +61,16 @@
     <ClCompile Include="..\shared\desktop\gui_debug_psg.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\gui_debug_link_cable.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_debug_sgb.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_debug_trace_logger.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\trace_logger_formatter.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_popups.cpp">
@@ -152,6 +164,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\MBC5MemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\MBC6MemoryRule.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\Memory.cpp">
@@ -267,8 +282,23 @@
     <ClInclude Include="..\shared\desktop\config.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\config_data.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\config_definitions.inc.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\config_macros.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\console_utils.h">
       <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\link_cable\link_cable_manager.h">
+      <Filter>desktop\link_cable</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\link_cable\link_cable_wire.h">
+      <Filter>desktop\link_cable</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\emu.h">
       <Filter>desktop</Filter>
@@ -283,6 +313,9 @@
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_actions.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_cheats.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug.h">
@@ -315,6 +348,9 @@
     <ClInclude Include="..\shared\desktop\gui_debug_psg.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_debug_link_cable.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug_sgb.h">
       <Filter>desktop</Filter>
     </ClInclude>
@@ -322,6 +358,9 @@
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug_trace_logger.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\trace_logger_formatter.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug_widgets.h">
@@ -335,6 +374,9 @@
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_popups.h">
       <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ips_patch.h">
+      <Filter>core</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\license.h">
       <Filter>desktop</Filter>
@@ -420,6 +462,9 @@
     <ClInclude Include="..\..\src\GearboyCore.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\link_cable.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\src\Input.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -439,6 +484,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\MBC5MemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\MBC6MemoryRule.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\Memory.h">
@@ -505,6 +553,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\Video.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\Video_inline.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\VgmRecorder.h">
@@ -593,6 +644,9 @@
     </Filter>
     <Filter Include="desktop">
       <UniqueIdentifier>{b305c14e-49f4-4f2f-9d40-5b15a839fbb7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="desktop\link_cable">
+      <UniqueIdentifier>{c52e7a89-8da5-4b4a-bc6d-ef327b70ec3c}</UniqueIdentifier>
     </Filter>
     <Filter Include="dependencies\miniz">
       <UniqueIdentifier>{466b2296-06dc-4afd-a898-3c4ed168681e}</UniqueIdentifier>

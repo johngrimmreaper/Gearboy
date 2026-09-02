@@ -28,6 +28,7 @@ class Processor;
 class Video;
 class CommonMemoryRule;
 class IORegistersMemoryRule;
+class TraceLogger;
 
 class Memory
 {
@@ -39,8 +40,10 @@ public:
     void Init();
     void Reset(bool bCGB, bool bSGB = false);
     void SetCurrentRule(MemoryRule* pRule);
+    void RefreshDirectROMPages();
     void SetCommonRule(CommonMemoryRule* pRule);
     void SetIORule(IORegistersMemoryRule* pRule);
+    void SetTraceLogger(TraceLogger* pTraceLogger);
     MemoryRule* GetCurrentRule();
     u8* GetMemoryMap();
     u8 Read(u16 address);
@@ -51,22 +54,23 @@ public:
     u8 ReadCGBLCDRAM(u16 address, bool forceBank1);
     void WriteCGBLCDRAM(u16 address, u8 value);
     void SwitchCGBLCDRAM(u8 value);
-    bool IsVRAMAccessBlocked() const;
+    INLINE bool IsVRAMAccessBlocked() const;
     u8 Retrieve(u16 address);
     void Load(u16 address, u8 value);
     u8 DebugRetrieve(u16 address);
     GB_Disassembler_Record* GetDisassemblerRecord(u16 address);
-    GB_Disassembler_Record* GetDisassemblerRecord(u16 address, u8 bank);
+    GB_Disassembler_Record* GetDisassemblerRecord(u16 address, u16 bank);
     GB_Disassembler_Record* GetOrCreateDisassemblerRecord(u16 address);
     void ResetDisassemblerRecords();
     GB_Disassembler_Record** GetAllDisassemblerRecords();
+    void InvalidateDisassemblerRecords(u32 start, u32 size);
     void LoadBank0and1FromROM(u8* pTheROM);
     void MemoryDump(const char* szFilePath);
     void PerformDMA(u8 value);
     void SwitchCGBDMA(u8 value);
     unsigned int PerformHDMA();
     void PerformGDMA(u8 value);
-    bool IsHDMAEnabled() const;
+    INLINE bool IsHDMAEnabled() const;
     void SetHDMARegister(int reg, u8 value);
     u8 GetHDMARegister(int reg) const;
     u8* GetCGBRAM();
@@ -84,6 +88,7 @@ public:
     u8* GetWRAM1();
     u32 GetPhysicalAddress(u16 address);
     u8 GetBank(u16 address);
+    u16 GetTraceBank(u16 address);
     void EnableBootromDMG(bool enable);
     void EnableBootromGBC(bool enable);
     void LoadBootromDMG(const char* szFilePath);
@@ -98,15 +103,19 @@ public:
 
 private:
     void LoadBootroom(const char* szFilePath, bool gbc);
-    void CheckBreakpoints(u16 address, bool write);
+    NO_INLINE void CheckBreakpoints(u16 address, bool write);
     bool IsHDMASourceInvalid() const;
+    INLINE void TraceLCDDMAEvent(u8 event, u16 source, u16 destination, u16 length);
+    NO_INLINE void LogLCDDMAEvent(u8 event, u16 source, u16 destination, u16 length);
 
 private:
     Processor* m_pProcessor;
     Video* m_pVideo;
     CommonMemoryRule* m_pCommonMemoryRule;
     IORegistersMemoryRule* m_pIORegistersMemoryRule;
+    TraceLogger* m_pTraceLogger;
     MemoryRule* m_pCurrentMemoryRule;
+    u8* m_pDirectROMPages[2];
     u8* m_pMap;
     GB_Disassembler_Record** m_pDisassembledMap;
     GB_Disassembler_Record** m_pDisassembledROMMap;
@@ -120,6 +129,9 @@ private:
     u8 m_HDMA[5];
     u16 m_HDMASource;
     u16 m_HDMADestination;
+    u16 m_HDMATraceSource;
+    u16 m_HDMATraceDestination;
+    u16 m_HDMATraceLength;
     bool m_bBootromDMGEnabled;
     bool m_bBootromGBCEnabled;
     bool m_bBootromDMGLoaded;
@@ -128,6 +140,7 @@ private:
     u8* m_pBootromGBC;
     bool m_bBootromRegistryDisabled;
     bool m_bCurrentRuleNeedsHighMemoryAccessNotifications;
+    bool m_bCurrentRuleMapsROMDirectly;
 };
 
 #include "Memory_inline.h"

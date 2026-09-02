@@ -21,6 +21,7 @@
 #define EMU_H
 
 #include "gearboy.h"
+#include "link_cable/link_cable_manager.h"
 
 #ifdef EMU_IMPORT
     #define EXTERN
@@ -100,8 +101,10 @@ EXTERN u32 emu_savestates_generation;
 EXTERN void emu_add_cheat(const char* cheat);
 EXTERN void emu_clear_cheats(void);
 EXTERN void emu_get_info(char* info, int buffer_size);
+EXTERN double emu_get_frame_rate(void);
 EXTERN GearboyCore* emu_get_core(void);
 EXTERN void emu_color_correction(bool correction);
+EXTERN void emu_video_no_sprite_limit(bool enabled);
 EXTERN void emu_debug_step_over(void);
 EXTERN void emu_debug_step_into(void);
 EXTERN void emu_debug_step_out(void);
@@ -131,7 +134,17 @@ EXTERN void emu_mcp_start(void);
 EXTERN void emu_mcp_stop(void);
 EXTERN bool emu_mcp_is_running(void);
 EXTERN int emu_mcp_get_transport_mode(void);
+EXTERN const char* emu_mcp_get_http_address(void);
+EXTERN int emu_mcp_get_http_port(void);
 EXTERN void emu_mcp_pump_commands(void);
+EXTERN bool emu_link_cable_connect(int session);
+EXTERN void emu_link_cable_stop(void);
+EXTERN void emu_link_cable_pump(void);
+EXTERN bool emu_link_cable_is_active(void);
+EXTERN bool emu_link_cable_is_cable_connected(void);
+EXTERN LinkCableStatus emu_link_cable_get_status(void);
+EXTERN void emu_link_cable_reset_metrics(void);
+EXTERN void emu_link_cable_set_normal_barrier_stall_us(u32 stall_us);
 
 #undef EMU_IMPORT
 #undef EXTERN

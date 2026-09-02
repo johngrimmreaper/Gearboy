@@ -138,11 +138,6 @@ void Audio::EndFrame(s16* pSampleBuffer, int* pSampleCount)
     for (int i = 0; i < 4; i++)
         m_pApu->read_debug_samples(m_pDebugChannelBuffer[i], i, AUDIO_BUFFER_SIZE, &m_iDebugChannelSamples[i]);
 
-#ifndef GEARBOY_DISABLE_VGMRECORDER
-    if (m_bVgmRecordingEnabled)
-        m_VgmRecorder.UpdateTiming(count / 2);
-#endif
-
     m_ElapsedCycles = 0;
 }
 
@@ -180,12 +175,12 @@ void Audio::LoadState(std::istream& stream, int version)
         m_pBuffer->clear();
 }
 
-bool Audio::StartVgmRecording(const char* file_path, int clock_rate, bool is_double_speed)
+bool Audio::StartVgmRecording(const char* file_path, int clock_rate, bool is_double_speed, const VgmMetadata& metadata)
 {
     if (m_bVgmRecordingEnabled)
         return false;
 
-    m_VgmRecorder.Start(file_path, clock_rate, is_double_speed);
+    m_VgmRecorder.Start(file_path, clock_rate, is_double_speed, metadata);
     m_bVgmRecordingEnabled = m_VgmRecorder.IsRecording();
 
     // Write initial state of all audio registers to VGM

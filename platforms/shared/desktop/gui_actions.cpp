@@ -33,6 +33,7 @@
 void gui_action_reset(void)
 {
     gui_set_status_message("Resetting...", 3000);
+
     gui_debug_trace_logger_clear();
 
     emu_resume();
@@ -51,12 +52,18 @@ void gui_action_reset(void)
 
 void gui_action_reload_rom(void)
 {
+    char rom_path[4096] = {};
     if (!emu_is_empty())
     {
-        char rom_path[4096];
         strncpy_fit(rom_path, emu_get_core()->GetCartridge()->GetFilePath(), sizeof(rom_path));
-        gui_load_rom(rom_path);
     }
+    else if (!config_emulator.recent_roms[0].empty())
+    {
+        strncpy_fit(rom_path, config_emulator.recent_roms[0].c_str(), sizeof(rom_path));
+    }
+
+    if (rom_path[0] != '\0')
+        gui_load_rom(rom_path);
 }
 
 void gui_action_pause(void)
@@ -75,6 +82,12 @@ void gui_action_pause(void)
 
 void gui_action_ffwd(void)
 {
+    if (emu_link_cable_is_active())
+    {
+        config_emulator.ffwd = false;
+        return;
+    }
+
     config_audio.sync = !config_emulator.ffwd;
 
     if (config_emulator.ffwd)
@@ -92,7 +105,7 @@ void gui_action_ffwd(void)
 
 void gui_action_rewind_pressed(void)
 {
-    if (emu_is_empty() || !config_rewind.enabled)
+    if (emu_is_empty() || !config_rewind.enabled || emu_link_cable_is_active())
         return;
     if (rewind_get_snapshot_count() < 1)
         return;

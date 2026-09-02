@@ -27,6 +27,13 @@
 
 bool g_mcp_router_enabled = false;
 
+static void add_trace_event_filter(u32* flags, u32* event_filters,
+    GB_Trace_Type type, u32 filter)
+{
+    *flags |= 1U << type;
+    event_filters[type] |= filter;
+}
+
 void McpServer::ReaderLoop()
 {
     while (m_running.load())
@@ -312,8 +319,8 @@ void McpServer::HandleInitialize(const json& request)
         }},
         {"serverInfo", {
             {"name", "gearboy-mcp-server"},
-            {"title", "Gearboy MCP Server"},
-            {"description", "Debug/control Gearboy Game Boy/Game Boy Color: execution, breakpoints, memory, SM83 CPU, LCD/PPU, APU, SGB, disassembly, symbols, sprites, save states, rewind, input, screenshots."},
+            {"title", GEARBOY_TITLE " MCP Server"},
+            {"description", "Debug/control " GEARBOY_TITLE " Game Boy/Game Boy Color: execution, breakpoints, memory, SM83 CPU, LCD/PPU, APU, SGB, disassembly, symbols, sprites, save states, rewind, input, screenshots."},
             {"version", GEARBOY_VERSION}
         }}
     };
@@ -405,7 +412,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "debug_step_frame"},
         {"title", "Debug Step Frame"},
-        {"description", "Run one or more video frames to VBlank."},
+        {"description", "Run one or more video frames to VBlank. Default mode is async; use mode sync to wait until all requested frames complete."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -415,6 +422,11 @@ json McpServer::BuildToolList()
                     {"description", "Number of frames to step. Default 1."},
                     {"minimum", 1},
                     {"maximum", 1000}
+                }},
+                {"mode", {
+                    {"type", "string"},
+                    {"description", "async returns after scheduling; sync waits until all requested frames complete. Default async."},
+                    {"enum", json::array({"async", "sync"})}
                 }}
             }},
             {"additionalProperties", false}
@@ -759,6 +771,30 @@ json McpServer::BuildToolList()
         {"title", "Get APU Status"},
         {"description", "Read APU audio state: square1/sweep, square2, wave, noise, volume, frequency, envelope, duty, wave RAM, panning."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "get_serial_status"},
+        {"title", "Get Serial / Link Cable Status"},
+        {"description", "Read Game Boy SB/SC serial engine, IRQ, timing, and local link-cable transport diagnostics."},
+        {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "reset_link_cable_metrics"},
+        {"title", "Reset Link Cable Metrics"},
+        {"description", "Reset local link-cable transport, synchronization, wait, and recovery counters."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
             {"properties", json::object()},
@@ -1526,9 +1562,9 @@ json McpServer::BuildToolList()
     });
 
     tools.push_back({
-        {"name", "memory_find_bytes"},
-        {"title", "Find Byte Sequence in Memory"},
-        {"description", "Find consecutive hex byte sequence in memory; return addresses."},
+        {"name", "memory_find"},
+        {"title", "Find Bytes or Text in Memory"},
+        {"description", "Find consecutive hex bytes or text in memory; return addresses."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1539,10 +1575,27 @@ json McpServer::BuildToolList()
                 }},
                 {"hex_bytes", {
                     {"type", "string"},
-                    {"description", "Hex byte pairs to find, e.g. '04E5FF32' (spaces optional)"}
+                    {"description", "Hex byte pairs to find, e.g. '04E5FF32' (spaces optional). "
+                        "Use either hex_bytes or text."},
+                    {"minLength", 1}
+                }},
+                {"text", {
+                    {"type", "string"},
+                    {"description", "UTF-8 text to find. Use either text or hex_bytes."},
+                    {"minLength", 1}
+                }},
+                {"case_sensitive", {
+                    {"type", "boolean"},
+                    {"description", "Match text case. Default true; false folds ASCII letters. "
+                        "Ignored for hex_bytes."}
                 }}
             }},
-            {"required", json::array({"area", "hex_bytes"})}
+            {"required", json::array({"area"})},
+            {"oneOf", json::array({
+                {{"required", json::array({"hex_bytes"})}},
+                {{"required", json::array({"text"})}}
+            })},
+            {"additionalProperties", false}
         }}
     });
 
@@ -1556,8 +1609,7 @@ json McpServer::BuildToolList()
             {"properties", {
                 {"start", {
                     {"type", "integer"},
-                    {"description", "Start index (0=oldest, omit for latest)"},
-                    {"minimum", 0}
+                    {"description", "Absolute trace sequence, or a negative value to read that many entries from the retained tail (omit for latest 100)"}
                 }},
                 {"count", {
                     {"type", "integer"},
@@ -1573,7 +1625,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "set_trace_log"},
         {"title", "Set Trace Logger"},
-        {"description", "Enable/disable trace log; CPU always traced; filter IRQ, LCD, APU, IO, bank switch events."},
+        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, and event filters."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1582,29 +1634,42 @@ json McpServer::BuildToolList()
                     {"type", "boolean"},
                     {"description", "true starts logging, false stops; preserves entries."}
                 }},
-                {"cpu_irq", {
-                    {"type", "boolean"},
-                    {"description", "Trace IRQ events (default true)"}
+                {"output", {
+                    {"type", "string"},
+                    {"description", "Trace destination. Defaults to memory when starting a stopped logger."},
+                    {"enum", json::array({"memory", "disk"})}
                 }},
-                {"lcd_write", {
-                    {"type", "boolean"},
-                    {"description", "Trace LCD register writes (default true)"}
+                {"memory_size", {
+                    {"type", "string"},
+                    {"description", "Maximum entries retained in memory mode."},
+                    {"enum", json::array({"100K", "500K", "1M", "2M", "5M"})}
                 }},
-                {"lcd_status", {
-                    {"type", "boolean"},
-                    {"description", "Trace LCD status events (default true)"}
+                {"disk_size", {
+                    {"type", "string"},
+                    {"description", "Maximum disk trace file size."},
+                    {"enum", json::array({"10MB", "50MB", "100MB", "250MB", "500MB", "1GB", "unbounded"})}
                 }},
-                {"apu_write", {
-                    {"type", "boolean"},
-                    {"description", "Trace APU register writes (default true)"}
+                {"output_path", {
+                    {"type", "string"},
+                    {"description", "Directory for the automatically named disk trace file."}
                 }},
-                {"io_write", {
-                    {"type", "boolean"},
-                    {"description", "Trace IO register writes (default true)"}
-                }},
-                {"bank_switch", {
-                    {"type", "boolean"},
-                    {"description", "Trace bank switch events (default true)"}
+                {"filters", {
+                    {"type", "array"},
+                    {"description", "Exact event streams to record. Defaults to CPU instructions and interrupts."},
+                    {"items", {
+                        {"type", "string"},
+                        {"enum", json::array({
+                            "cpu.instructions", "cpu.interrupts",
+                            "lcd.registers", "lcd.interrupts", "lcd.dma",
+                            "input.reads", "input.writes",
+                            "timer.interrupts", "timer.registers",
+                            "apu.global", "apu.pulse1", "apu.pulse2", "apu.wave", "apu.noise", "apu.wave_ram",
+                            "serial.registers", "serial.transfers", "serial.interrupts",
+                            "mapper.rom", "mapper.ram_rtc", "mapper.control"
+                        })}
+                    }},
+                    {"minItems", 1},
+                    {"uniqueItems", true}
                 }}
             }},
             {"required", json::array({"enabled"})},
@@ -1999,7 +2064,7 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
             return {{"error", "Invalid frames value (must be 1-1000)"}};
 
         m_debugAdapter.StepFrame(frames);
-        return {{"success", true}, {"frames", frames}};
+        return {{"success", true}, {"mode", "async"}, {"pending", true}, {"frames", frames}};
     }
     else if (normalizedTool == "debug_reset")
     {
@@ -2158,6 +2223,7 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
             areaObj["id"] = area.id;
             areaObj["name"] = area.name;
             areaObj["size"] = area.size;
+            areaObj["read_only"] = area.read_only;
             areaArray.push_back(areaObj);
         }
         return {{"areas", areaArray}};
@@ -2211,7 +2277,8 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
             data.push_back(byte);
         }
 
-        m_debugAdapter.WriteMemoryArea(area, offset, data);
+        if (!m_debugAdapter.WriteMemoryArea(area, offset, data))
+            return {{"error", "Memory area is invalid or read-only"}};
         return {{"success", true}, {"area", area}, {"offset", offsetStr}, {"bytes_written", data.size()}};
     }
     // Registers
@@ -2366,6 +2433,14 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
     else if (normalizedTool == "get_apu_status")
     {
         return m_debugAdapter.GetAPUStatus();
+    }
+    else if (normalizedTool == "get_serial_status")
+    {
+        return m_debugAdapter.GetSerialStatus();
+    }
+    else if (normalizedTool == "reset_link_cable_metrics")
+    {
+        return m_debugAdapter.ResetLinkCableMetrics();
     }
     else if (normalizedTool == "get_screenshot")
     {
@@ -2626,37 +2701,112 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
         std::string data_type = arguments.value("data_type", "unsigned");
         return m_debugAdapter.MemorySearch(area, op, compare_type, compare_value, data_type);
     }
-    else if (normalizedTool == "memory_find_bytes")
+    else if (normalizedTool == "memory_find")
     {
         if (!arguments.contains("area") || !arguments["area"].is_number_integer())
             return {{"error", "area is required"}};
-        if (!arguments.contains("hex_bytes") || !arguments["hex_bytes"].is_string())
-            return {{"error", "hex_bytes is required"}};
+        if (arguments.contains("hex_bytes") && !arguments["hex_bytes"].is_string())
+            return {{"error", "hex_bytes must be a string"}};
+        if (arguments.contains("text") && !arguments["text"].is_string())
+            return {{"error", "text must be a string"}};
+        if (arguments.contains("case_sensitive") && !arguments["case_sensitive"].is_boolean())
+            return {{"error", "case_sensitive must be a boolean"}};
+
+        bool has_hex_bytes = arguments.contains("hex_bytes");
+        bool has_text = arguments.contains("text");
+        if (has_hex_bytes == has_text)
+            return {{"error", "Exactly one of hex_bytes or text is required"}};
 
         int area = arguments["area"].get<int>();
-        std::string hex_bytes = arguments["hex_bytes"].get<std::string>();
-        return m_debugAdapter.MemoryFindBytes(area, hex_bytes);
+        std::string value;
+        if (has_text)
+            value = arguments["text"].get<std::string>();
+        else
+            value = arguments["hex_bytes"].get<std::string>();
+        bool case_sensitive = arguments.value("case_sensitive", true);
+        return m_debugAdapter.MemoryFind(area, value, has_text, case_sensitive);
     }
     else if (normalizedTool == "get_trace_log")
     {
-        int start = arguments.value("start", -1);
+        s64 start = arguments.value("start", (s64)-100);
         int count = arguments.value("count", 100);
         return m_debugAdapter.GetTraceLog(start, count);
     }
     else if (normalizedTool == "set_trace_log")
     {
         bool enabled = arguments["enabled"];
-        u32 flags = TRACE_FLAG_CPU;
+        u32 flags = TRACE_FLAG_CPU | TRACE_FLAG_CPU_IRQ;
+        u32 event_filters[TRACE_TYPE_COUNT] = {};
+        event_filters[TRACE_LCD] = TRACE_LCD_FILTER_ALL;
+        event_filters[TRACE_INPUT] = TRACE_INPUT_FILTER_ALL;
+        event_filters[TRACE_TIMER] = TRACE_TIMER_FILTER_ALL;
+        event_filters[TRACE_APU] = TRACE_APU_FILTER_ALL;
+        event_filters[TRACE_SERIAL] = TRACE_SERIAL_FILTER_ALL;
+        event_filters[TRACE_MAPPER] = TRACE_MAPPER_FILTER_ALL;
         if (enabled)
         {
-            if (arguments.value("cpu_irq", true)) flags |= TRACE_FLAG_CPU_IRQ;
-            if (arguments.value("lcd_write", true)) flags |= TRACE_FLAG_LCD_WRITE;
-            if (arguments.value("lcd_status", true)) flags |= TRACE_FLAG_LCD_STATUS;
-            if (arguments.value("apu_write", true)) flags |= TRACE_FLAG_APU_WRITE;
-            if (arguments.value("io_write", true)) flags |= TRACE_FLAG_IO_WRITE;
-            if (arguments.value("bank_switch", true)) flags |= TRACE_FLAG_BANK_SWITCH;
+            if (arguments.contains("filters"))
+            {
+                flags = 0;
+                for (int i = 0; i < TRACE_TYPE_COUNT; i++)
+                    event_filters[i] = 0;
+                const json& filters = arguments["filters"];
+                for (json::const_iterator it = filters.begin(); it != filters.end(); ++it)
+                {
+                    std::string filter = it->get<std::string>();
+                    if (filter == "cpu.instructions") flags |= TRACE_FLAG_CPU;
+                    else if (filter == "cpu.interrupts") flags |= TRACE_FLAG_CPU_IRQ;
+                    else if (filter == "lcd.registers")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_REGISTERS);
+                    else if (filter == "lcd.interrupts")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_INTERRUPTS);
+                    else if (filter == "lcd.dma")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_DMA);
+                    else if (filter == "input.reads")
+                        add_trace_event_filter(&flags, event_filters, TRACE_INPUT, TRACE_INPUT_FILTER_READS);
+                    else if (filter == "input.writes")
+                        add_trace_event_filter(&flags, event_filters, TRACE_INPUT, TRACE_INPUT_FILTER_WRITES);
+                    else if (filter == "timer.interrupts")
+                        add_trace_event_filter(&flags, event_filters, TRACE_TIMER, TRACE_TIMER_FILTER_INTERRUPTS);
+                    else if (filter == "timer.registers")
+                        add_trace_event_filter(&flags, event_filters, TRACE_TIMER, TRACE_TIMER_FILTER_REGISTERS);
+                    else if (filter == "apu.global")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_GLOBAL);
+                    else if (filter == "apu.pulse1")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_PULSE1);
+                    else if (filter == "apu.pulse2")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_PULSE2);
+                    else if (filter == "apu.wave")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_WAVE);
+                    else if (filter == "apu.noise")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_NOISE);
+                    else if (filter == "apu.wave_ram")
+                        add_trace_event_filter(&flags, event_filters, TRACE_APU, TRACE_APU_FILTER_WAVE_RAM);
+                    else if (filter == "serial.registers")
+                        add_trace_event_filter(&flags, event_filters, TRACE_SERIAL, TRACE_SERIAL_FILTER_REGISTERS);
+                    else if (filter == "serial.transfers")
+                        add_trace_event_filter(&flags, event_filters, TRACE_SERIAL, TRACE_SERIAL_FILTER_TRANSFERS);
+                    else if (filter == "serial.interrupts")
+                        add_trace_event_filter(&flags, event_filters, TRACE_SERIAL, TRACE_SERIAL_FILTER_INTERRUPTS);
+                    else if (filter == "mapper.rom")
+                        add_trace_event_filter(&flags, event_filters, TRACE_MAPPER, TRACE_MAPPER_FILTER_ROM);
+                    else if (filter == "mapper.ram_rtc")
+                        add_trace_event_filter(&flags, event_filters, TRACE_MAPPER, TRACE_MAPPER_FILTER_RAM_RTC);
+                    else if (filter == "mapper.control")
+                        add_trace_event_filter(&flags, event_filters, TRACE_MAPPER, TRACE_MAPPER_FILTER_CONTROL);
+                    else return {{"error", "Unknown trace filter: " + filter}};
+                }
+
+                if (flags == 0)
+                    return {{"error", "At least one trace filter is required"}};
+            }
         }
-        return m_debugAdapter.SetTraceLog(enabled, flags);
+        std::string output = arguments.value("output", "");
+        std::string memory_size = arguments.value("memory_size", "");
+        std::string disk_size = arguments.value("disk_size", "");
+        std::string output_path = arguments.value("output_path", "");
+        return m_debugAdapter.SetTraceLog(enabled, flags, output, memory_size,
+                                          disk_size, output_path, event_filters);
     }
     else if (normalizedTool == "get_sgb_status")
     {

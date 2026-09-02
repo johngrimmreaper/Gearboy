@@ -63,7 +63,7 @@ public:
     MemEditor();
     ~MemEditor();
 
-    void Reset(const char* title, uint8_t* mem_data, int mem_size, int base_display_addr = 0x0000, int word = 1);
+    void Reset(const char* title, uint8_t* mem_data, int mem_size, int base_display_addr = 0x0000, int word = 1, bool read_only = false);
     void Draw(bool ascii = true, bool preview = true, bool options = true, bool cursors = true);
     void DrawWatchWindow();
     void DrawSearchWindow();
@@ -83,6 +83,7 @@ public:
     void OpenWatchWindow();
     void OpenSearchWindow();
     void OpenFindBytes();
+    void OpenFindText();
     void AddWatch();
     void PrepareAddWatch(int address, const char* notes);
     bool AddWatchDirect(int address, const char* notes, int size);
@@ -105,7 +106,7 @@ public:
     void SearchCapture();
     int PerformSearch(int op, int compare_type, int compare_value, int data_type);
     std::vector<Search>* GetSearchResults();
-    int FindBytesSequence(const char* hex_str, int* out_addresses, int max_results);
+    int FindSequence(const char* value, bool text, bool case_sensitive, int* out_addresses, int max_results);
 
 private:
     bool IsColumnSeparator(int current_column, int column_count);
@@ -129,6 +130,8 @@ private:
     void DrawSearchValue(int value, ImVec4 color);
     void FindBytesNext(int start_offset);
     bool ParseHexByteString(const char* str, uint8_t* out, int* out_len, int max_len);
+    bool ParseFindPattern(const char* value, bool text, uint8_t* out, int* out_len, int max_len);
+    bool FindByteMatches(uint8_t value, uint8_t pattern, bool text, bool case_sensitive);
     bool NormalizeSelectionAddress(int address, int* offset);
     bool CanWatchRangeFit(int address, int size);
     bool CanSearchAddressFit(int address);
@@ -157,6 +160,7 @@ private:
     char m_hex_addr_format[16];
     int m_hex_addr_digits;
     int m_mem_word;
+    bool m_read_only;
     char m_goto_address[7];
     char m_find_next[5];
     bool m_add_bookmark;
@@ -180,7 +184,10 @@ private:
     std::vector<Search> m_search_results;
     bool m_search_auto;
     bool m_find_bytes_window;
+    bool m_find_text;
+    bool m_find_text_case_sensitive;
     char m_find_bytes_buffer[1025];
+    char m_find_text_buffer[513];
     int m_find_bytes_last_address;
     int m_find_bytes_pattern_len;
     std::vector<int> m_find_bytes_results;
