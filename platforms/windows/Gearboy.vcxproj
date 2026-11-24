@@ -27,6 +27,7 @@
     <ClCompile Include="..\..\src\audio\Gb_Oscs.cpp" />
     <ClCompile Include="..\..\src\audio\Multi_Buffer.cpp" />
     <ClCompile Include="..\..\src\Cartridge.cpp" />
+    <ClCompile Include="..\..\src\BarcodeBoy.cpp" />
     <ClCompile Include="..\..\src\CommonMemoryRule.cpp" />
     <ClCompile Include="..\..\src\GearboyCore.cpp" />
     <ClCompile Include="..\..\src\Input.cpp" />
@@ -35,6 +36,7 @@
     <ClCompile Include="..\..\src\MBC2MemoryRule.cpp" />
     <ClCompile Include="..\..\src\MBC3MemoryRule.cpp" />
     <ClCompile Include="..\..\src\MBC5MemoryRule.cpp" />
+    <ClCompile Include="..\..\src\MBC5LogoMemoryRule.cpp" />
     <ClCompile Include="..\..\src\MBC6MemoryRule.cpp" />
     <ClCompile Include="..\..\src\Memory.cpp" />
     <ClCompile Include="..\..\src\MemoryRule.cpp" />
@@ -49,7 +51,16 @@
     <ClCompile Include="..\..\src\M161MemoryRule.cpp" />
     <ClCompile Include="..\..\src\SachenMMC1MemoryRule.cpp" />
     <ClCompile Include="..\..\src\SachenMMC2MemoryRule.cpp" />
+    <ClCompile Include="..\..\src\RocketMemoryRule.cpp" />
     <ClCompile Include="..\..\src\FlashcartMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\BHGOSMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\LiChengMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\NTNewMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\GGB81MemoryRule.cpp" />
+    <ClCompile Include="..\..\src\HitekMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\VF001MemoryRule.cpp" />
+    <ClCompile Include="..\..\src\SintaxMemoryRule.cpp" />
+    <ClCompile Include="..\..\src\NTOldMemoryRule.cpp" />
     <ClCompile Include="..\..\src\opcodes.cpp" />
     <ClCompile Include="..\..\src\opcodes_cb.cpp" />
     <ClCompile Include="..\..\src\Processor.cpp" />
@@ -58,6 +69,7 @@
     <ClCompile Include="..\..\src\VgmRecorder.cpp" />
     <ClCompile Include="..\..\src\SGB.cpp" />
     <ClCompile Include="..\..\src\TraceLogger.cpp" />
+    <ClCompile Include="..\..\src\Profiler.cpp" />
     <ClCompile Include="..\shared\dependencies\miniz\miniz.c">
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
     </ClCompile>
@@ -69,8 +81,10 @@
     <ClCompile Include="..\shared\desktop\emu.cpp" />
     <ClCompile Include="..\shared\desktop\rewind.cpp" />
     <ClCompile Include="..\shared\desktop\runahead.cpp" />
+    <ClCompile Include="..\shared\desktop\video_recorder.cpp" />
     <ClCompile Include="..\shared\desktop\gui.cpp" />
     <ClCompile Include="..\shared\desktop\gui_actions.cpp" />
+    <ClCompile Include="..\shared\desktop\gui_notifications.cpp" />
     <ClCompile Include="..\shared\desktop\gui_cheats.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_rewind.cpp" />
@@ -84,10 +98,12 @@
     <ClCompile Include="..\shared\desktop\gui_debug_link_cable.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_sgb.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_trace_logger.cpp" />
+    <ClCompile Include="..\shared\desktop\gui_debug_profiler.cpp" />
     <ClCompile Include="..\shared\desktop\trace_logger_formatter.cpp" />
     <ClCompile Include="..\shared\desktop\gui_filedialogs.cpp" />
     <ClCompile Include="..\shared\desktop\gui_menus.cpp" />
     <ClCompile Include="..\shared\desktop\gui_popups.cpp" />
+    <ClCompile Include="..\shared\desktop\gui_shader.cpp" />
     <ClCompile Include="..\shared\desktop\main.cpp" />
     <ClCompile Include="..\shared\desktop\ogl_renderer.cpp" />
     <ClCompile Include="..\shared\desktop\ogl_shader_program.cpp" />
@@ -144,6 +160,8 @@
     <ClInclude Include="..\..\src\audio\Gb_Oscs.h" />
     <ClInclude Include="..\..\src\audio\Multi_Buffer.h" />
     <ClInclude Include="..\..\src\Cartridge.h" />
+    <ClInclude Include="..\..\src\BarcodeBoy.h" />
+    <ClInclude Include="..\..\src\game_db.h" />
     <ClInclude Include="..\..\src\common.h" />
     <ClInclude Include="..\..\src\CommonMemoryRule.h" />
     <ClInclude Include="..\..\src\definitions.h" />
@@ -156,6 +174,7 @@
     <ClInclude Include="..\..\src\MBC2MemoryRule.h" />
     <ClInclude Include="..\..\src\MBC3MemoryRule.h" />
     <ClInclude Include="..\..\src\MBC5MemoryRule.h" />
+    <ClInclude Include="..\..\src\MBC5LogoMemoryRule.h" />
     <ClInclude Include="..\..\src\MBC6MemoryRule.h" />
     <ClInclude Include="..\..\src\Memory.h" />
     <ClInclude Include="..\..\src\MemoryRule.h" />
@@ -171,7 +190,16 @@
     <ClInclude Include="..\..\src\M161MemoryRule.h" />
     <ClInclude Include="..\..\src\SachenMMC1MemoryRule.h" />
     <ClInclude Include="..\..\src\SachenMMC2MemoryRule.h" />
+    <ClInclude Include="..\..\src\RocketMemoryRule.h" />
     <ClInclude Include="..\..\src\FlashcartMemoryRule.h" />
+    <ClInclude Include="..\..\src\BHGOSMemoryRule.h" />
+    <ClInclude Include="..\..\src\LiChengMemoryRule.h" />
+    <ClInclude Include="..\..\src\NTNewMemoryRule.h" />
+    <ClInclude Include="..\..\src\GGB81MemoryRule.h" />
+    <ClInclude Include="..\..\src\HitekMemoryRule.h" />
+    <ClInclude Include="..\..\src\VF001MemoryRule.h" />
+    <ClInclude Include="..\..\src\SintaxMemoryRule.h" />
+    <ClInclude Include="..\..\src\NTOldMemoryRule.h" />
     <ClInclude Include="..\..\src\opcode_names.h" />
     <ClInclude Include="..\..\src\opcode_timing.h" />
     <ClInclude Include="..\..\src\Processor.h" />
@@ -183,6 +211,7 @@
     <ClInclude Include="..\..\src\VgmRecorder.h" />
     <ClInclude Include="..\..\src\SGB.h" />
     <ClInclude Include="..\..\src\TraceLogger.h" />
+    <ClInclude Include="..\..\src\Profiler.h" />
     <ClInclude Include="..\shared\dependencies\glad\glad.h" />
     <ClInclude Include="..\shared\dependencies\miniz\miniz.h" />
     <ClInclude Include="..\shared\dependencies\imgui\imgui_impl_sdl3.h" />
@@ -207,6 +236,7 @@
     <ClInclude Include="..\shared\desktop\application.h" />
     <ClInclude Include="..\shared\desktop\application_headless.h" />
     <ClInclude Include="..\shared\desktop\backers.h" />
+    <ClInclude Include="..\shared\barcode_boy_codes.h" />
     <ClInclude Include="..\shared\desktop\config.h" />
     <ClInclude Include="..\shared\desktop\config_data.h" />
     <ClInclude Include="..\shared\desktop\config_definitions.inc.h" />
@@ -217,10 +247,13 @@
     <ClInclude Include="..\shared\desktop\emu.h" />
     <ClInclude Include="..\shared\desktop\rewind.h" />
     <ClInclude Include="..\shared\desktop\runahead.h" />
+    <ClInclude Include="..\shared\desktop\video_recorder.h" />
     <ClInclude Include="..\shared\desktop\gui.h" />
     <ClInclude Include="..\shared\desktop\gui_actions.h" />
+    <ClInclude Include="..\shared\desktop\gui_notifications.h" />
     <ClInclude Include="..\shared\desktop\gui_cheats.h" />
     <ClInclude Include="..\shared\desktop\gui_debug.h" />
+    <ClInclude Include="..\shared\desktop\gui_colors.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_constants.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_rewind.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_disassembler.h" />
@@ -234,11 +267,13 @@
     <ClInclude Include="..\shared\desktop\gui_debug_sgb.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_text.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_trace_logger.h" />
+    <ClInclude Include="..\shared\desktop\gui_debug_profiler.h" />
     <ClInclude Include="..\shared\desktop\trace_logger_formatter.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_widgets.h" />
     <ClInclude Include="..\shared\desktop\gui_filedialogs.h" />
     <ClInclude Include="..\shared\desktop\gui_menus.h" />
     <ClInclude Include="..\shared\desktop\gui_popups.h" />
+    <ClInclude Include="..\shared\desktop\gui_shader.h" />
     <ClInclude Include="..\..\src\ips_patch.h" />
     <ClInclude Include="..\shared\desktop\license.h" />
     <ClInclude Include="..\shared\desktop\ogl_renderer.h" />
@@ -263,6 +298,9 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Gearboy.rc" />
+    <ResourceCompile Include="version.rc">
+      <PreprocessorDefinitions>EMULATOR_BUILD="$(EmulatorBuild)";EMULATOR_VERSION=$(EmulatorVersionResource);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -270,6 +308,10 @@
     <ProjectGuid>{92D9838A-C6AB-348D-8565-F9E813C3C467}</ProjectGuid>
     <RootNamespace>Gearboy</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <EmulatorBuild Condition="'$(EmulatorBuild)' == ''">undefined</EmulatorBuild>
+    <EmulatorVersion>$([System.Text.RegularExpressions.Regex]::Match('$(EmulatorBuild)', '^[0-9]+\.[0-9]+\.[0-9]+').Value)</EmulatorVersion>
+    <EmulatorVersion Condition="'$(EmulatorVersion)' == ''">0.0.0</EmulatorVersion>
+    <EmulatorVersionResource>$([System.String]::Copy('$(EmulatorVersion)').Replace('.', ',')),0</EmulatorVersionResource>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -353,14 +395,15 @@
       <BrowseInformation>false</BrowseInformation>
       <DebugInformationFormat>None</DebugInformationFormat>
       <DisableSpecificWarnings>4577;%(DisableSpecificWarnings)</DisableSpecificWarnings>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>false</ExceptionHandling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;_HAS_EXCEPTIONS=0;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
       <WarningLevel>Level3</WarningLevel>
@@ -376,6 +419,8 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Midl>
@@ -395,14 +440,15 @@
       <BrowseInformation>false</BrowseInformation>
       <DebugInformationFormat>None</DebugInformationFormat>
       <DisableSpecificWarnings>4577;%(DisableSpecificWarnings)</DisableSpecificWarnings>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>false</ExceptionHandling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;_HAS_EXCEPTIONS=0;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
       <WarningLevel>Level3</WarningLevel>
@@ -418,6 +464,8 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Midl>

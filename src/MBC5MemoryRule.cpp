@@ -24,10 +24,7 @@
 #include "Input.h"
 #include "Cartridge.h"
 
-MBC5MemoryRule::MBC5MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+MBC5MemoryRule::MBC5MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     m_pRAMBanks = new u8[0x20000];
     Reset(false);
@@ -100,15 +97,9 @@ void MBC5MemoryRule::PerformWrite(u16 address, u8 value)
     {
         case 0x0000:
         {
-            if (m_pCartridge->GetRAMSize() > 0)
+            if (GetRamSize() > 0)
             {
-                bool previous = m_bRamEnabled;
                 m_bRamEnabled = (value == 0x0A);
-
-                if (IsValidPointer(m_pRamChangedCallback) && previous && !m_bRamEnabled)
-                {
-                    (*m_pRamChangedCallback)();
-                }
             }
             if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
             {
@@ -148,7 +139,7 @@ void MBC5MemoryRule::PerformWrite(u16 address, u8 value)
             {
                 m_iCurrentRAMBank = value & 0x0F;
             }
-            m_iCurrentRAMBank &= (m_pCartridge->GetRAMBankCount() - 1);
+            m_iCurrentRAMBank &= (static_cast<int>(GetRamSize() / 0x2000) - 1);
             m_CurrentRAMAddress = m_iCurrentRAMBank * 0x2000;
             TraceMapperEvent(address, value);
             break;
@@ -181,9 +172,8 @@ void MBC5MemoryRule::PerformWrite(u16 address, u8 value)
 void MBC5MemoryRule::SaveRam(std::ostream & file)
 {
     Debug("MBC5MemoryRule save RAM...");
-    Debug("MBC5MemoryRule saving %d banks...", m_pCartridge->GetRAMBankCount());
-
-    s32 ramSize = m_pCartridge->GetRAMBankCount() * 0x2000;
+    s32 ramSize = static_cast<s32>(GetRamSize());
+    Debug("MBC5MemoryRule saving %d banks...", ramSize / 0x2000);
 
     for (s32 i = 0; i < ramSize; i++)
     {
@@ -197,9 +187,8 @@ void MBC5MemoryRule::SaveRam(std::ostream & file)
 bool MBC5MemoryRule::LoadRam(std::istream & file, s32 fileSize)
 {
     Debug("MBC5MemoryRule load RAM...");
-    Debug("MBC5MemoryRule loading %d banks...", m_pCartridge->GetRAMBankCount());
-
-    s32 ramSize = m_pCartridge->GetRAMBankCount() * 0x2000;
+    s32 ramSize = static_cast<s32>(GetRamSize());
+    Debug("MBC5MemoryRule loading %d banks...", ramSize / 0x2000);
 
     if ((fileSize > 0) && (fileSize != ramSize))
     {
@@ -273,7 +262,7 @@ void MBC5MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentRAMAddress), sizeof(m_CurrentRAMAddress));
 }
 
-void MBC5MemoryRule::LoadState(std::istream& stream)
+void MBC5MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 
@@ -287,7 +276,7 @@ void MBC5MemoryRule::LoadState(std::istream& stream)
     m_RomBankLow = m_iCurrentROMBank & 0xFF;
     UpdateBanks();
 
-    int ramBankCount = m_pCartridge->GetRAMBankCount();
+    int ramBankCount = static_cast<int>(GetRamSize() / 0x2000);
     if (ramBankCount > 0)
     {
         m_iCurrentRAMBank &= m_pCartridge->IsRumblePresent() ? 0x07 : 0x0F;

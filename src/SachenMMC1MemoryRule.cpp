@@ -48,10 +48,7 @@ static u8 ExpandLogoPass(u8& c, u8 a, bool& carry)
     return a;
 }
 
-SachenMMC1MemoryRule::SachenMMC1MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+SachenMMC1MemoryRule::SachenMMC1MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     Reset(false);
 }
@@ -295,7 +292,7 @@ void SachenMMC1MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentROMAddress), sizeof(m_CurrentROMAddress));
 }
 
-void SachenMMC1MemoryRule::LoadState(std::istream& stream)
+void SachenMMC1MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

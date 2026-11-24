@@ -22,6 +22,7 @@
 #include <ctype.h>
 #include "Processor.h"
 #include "TraceLogger.h"
+#include "Profiler.h"
 #include "opcode_timing.h"
 #include "opcode_names.h"
 #include "common.h"
@@ -31,6 +32,7 @@ Processor::Processor(Memory* pMemory)
     m_pMemory = pMemory;
     m_pMemory->SetProcessor(this);
     InitPointer(m_pTraceLogger);
+    InitPointer(m_pProfiler);
     InitOPCodeTable();
     m_bIME = false;
     m_bHalt = false;
@@ -50,14 +52,21 @@ Processor::Processor(Memory* pMemory)
     m_link_cable_sync_callback = NULL;
     m_link_cable_user_data = NULL;
     m_bLinkCableConnected = false;
+    m_bSerialConnected = false;
     ResetSerialRuntime();
     m_bCGB = false;
     m_iUnhaltCycles = 0;
     m_iInterruptDelayCycles = 0;
     m_iAccurateOPCodeState = 0;
+    m_OpcodeCache = 0xFFFF;
     m_iReadCache = 0;
     m_breakpoints_enabled = false;
     m_breakpoints_irq_enabled = false;
+    m_vblank_watch_read = false;
+    m_vblank_watch_write = false;
+    m_vblank_watch_address = 0;
+    ResetVBlankWatch();
+    RefreshMemoryHooks();
     m_cpu_breakpoint_hit = false;
     m_memory_breakpoint_hit = false;
     m_run_to_breakpoint_hit = false;
@@ -84,6 +93,23 @@ void Processor::SetTraceLogger(TraceLogger* pTraceLogger)
     m_pTraceLogger = pTraceLogger;
 }
 
+void Processor::SetProfiler(Profiler* pProfiler)
+{
+    m_pProfiler = pProfiler;
+}
+
+void Processor::ProfilerEnter(u16 address, u32 pending_cycles, bool irq)
+{
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    u32 key = (address < 0x8000) ? m_pMemory->GetPhysicalAddress(address) : (PROFILER_RAM_KEY | address);
+    m_pProfiler->Enter(key, address, m_pMemory->GetTraceBank(address), SP.GetValue(), irq, pending_cycles);
+#else
+    UNUSED(address);
+    UNUSED(pending_cycles);
+    UNUSED(irq);
+#endif
+}
+
 void Processor::SetDisassemblerSyntax(GB_Disassembler_Syntax syntax)
 {
     if (syntax < GB_Disassembler_Syntax_Gearboy || syntax >= GB_Disassembler_Syntax_Count)
@@ -92,14 +118,14 @@ void Processor::SetDisassemblerSyntax(GB_Disassembler_Syntax syntax)
     m_disassembler_syntax = syntax;
 }
 
-GB_Disassembler_Syntax Processor::GetDisassemblerSyntax() const
-{
-    return m_disassembler_syntax;
-}
-
 void Processor::Init()
 {
     Reset(false, false);
+}
+
+NO_INLINE COLD void Processor::InvalidOPCode()
+{
+    Debug("--> ** INVALID OP Code");
 }
 
 void Processor::Reset(bool bCGB, bool bGBA, bool bSGB)
@@ -158,10 +184,13 @@ void Processor::Reset(bool bCGB, bool bGBA, bool bSGB)
 
     m_iInterruptDelayCycles = 0;
     m_iAccurateOPCodeState = 0;
+    m_OpcodeCache = 0xFFFF;
     m_iReadCache = 0;
     m_GameSharkList.clear();
     m_breakpoints_enabled = false;
     m_breakpoints_irq_enabled = false;
+    ResetVBlankWatch();
+    RefreshMemoryHooks();
     m_cpu_breakpoint_hit = false;
     m_memory_breakpoint_hit = false;
     m_run_to_breakpoint_hit = false;
@@ -241,7 +270,6 @@ void Processor::LogTimerEvent(u8 event)
     e.timer.control = m_pMemory->Retrieve(0xFF07);
     e.timer.value = e.timer.counter;
     e.timer.event = event;
-    e.timer.enabled = (e.timer.control & 0x04) ? 1 : 0;
     m_pTraceLogger->TraceLog(e);
 #else
     UNUSED(event);
@@ -357,7 +385,7 @@ void Processor::ServeInterrupt(Interrupts interrupt)
             }
         }
 
-        PushCallStack(old_pc, PC.GetValue(), old_pc, 0);
+        PushCallStack(old_pc, PC.GetValue(), old_pc, 0, 0, true);
 
         TraceIRQEvent(old_pc, PC.GetValue(), irq_type);
     }
@@ -385,6 +413,12 @@ void Processor::ResetSerialRuntime()
     m_iSerialNextShiftCycle = 0;
     m_iLinkCableNextSyncCycle = 0;
     m_iLinkCableSyncCycles = LINK_CABLE_IDLE_SYNC_CYCLES;
+}
+
+void Processor::ResetSerialDevice()
+{
+    ResetSerialRuntime();
+    m_pMemory->Load(0xFF02, m_pMemory->Retrieve(0xFF02) & 0x7F);
 }
 
 u8 Processor::NormalizeSerialControl(u8 value) const
@@ -419,16 +453,18 @@ void Processor::SetLinkCableCallbacks(GB_LinkCableStateCallback state_callback,
     m_link_cable_user_data = user_data;
 }
 
-void Processor::SetLinkCableConnected(bool connected, u64 current_cycle)
+void Processor::SetSerialConnected(bool connected, bool link_connected, u64 current_cycle)
 {
-    if (connected == m_bLinkCableConnected)
+    if (connected == m_bSerialConnected && link_connected == m_bLinkCableConnected)
     {
         if (connected)
             PublishSerialState(current_cycle);
+
         return;
     }
 
-    m_bLinkCableConnected = connected;
+    m_bLinkCableConnected = link_connected;
+    m_bSerialConnected = connected;
     m_iLinkCableNextSyncCycle = current_cycle;
     m_iLinkCableSyncCycles = LINK_CABLE_IDLE_SYNC_CYCLES;
 
@@ -458,11 +494,18 @@ void Processor::GetSerialState(SerialState& state) const
     state.next_shift_cycle = m_iSerialNextShiftCycle;
 }
 
-void Processor::PublishSerialState(u64 cycle)
+void Processor::SetLinkCableIncomingByte(u32 transfer_id, u8 incoming_byte)
 {
-    if (m_bLinkCableConnected && m_link_cable_state_callback)
+    if (m_bSerialTransferActive && m_bSerialInternalClock && m_iSerialTransferId == transfer_id)
+        m_iSerialIncomingByte = incoming_byte;
+}
+
+void Processor::PublishSerialState(u64 cycle, GB_SerialEvent event)
+{
+    if (m_bSerialConnected && m_link_cable_state_callback)
     {
-        m_link_cable_state_callback(cycle, m_pMemory->Retrieve(0xFF01), m_pMemory->Retrieve(0xFF02), m_link_cable_user_data);
+        m_link_cable_state_callback(cycle, m_pMemory->Retrieve(0xFF01), m_pMemory->Retrieve(0xFF02),
+            event, m_link_cable_user_data);
     }
 }
 
@@ -480,7 +523,7 @@ void Processor::ProcessSerialControlWrite(u64 current_cycle)
     m_iSerialBitCycles = 0;
     m_iSerialNextShiftCycle = 0;
 
-    PublishSerialState(current_cycle);
+    PublishSerialState(current_cycle, GB_SerialEvent_ControlWrite);
 
     if ((sc & 0x80) == 0)
         return;
@@ -514,12 +557,10 @@ void Processor::StartInternalSerialTransfer(u64 current_cycle)
     m_iSerialNextShiftCycle = current_cycle + GetFirstSerialShiftCycles(fast_cgb);
     m_iSerialTransferId++;
 
-    if (m_bLinkCableConnected && m_link_cable_start_callback)
+    if (m_bSerialConnected && m_link_cable_start_callback)
     {
-        m_link_cable_start_callback(m_iSerialRequestCycle,
-            m_iSerialNextShiftCycle, m_iSerialBitCycles,
-            m_iSerialOutgoingByte, m_iSerialTransferId,
-            &m_iSerialIncomingByte, m_link_cable_user_data);
+        m_link_cable_start_callback(m_iSerialRequestCycle, m_iSerialNextShiftCycle, m_iSerialBitCycles,
+            m_iSerialOutgoingByte, m_iSerialTransferId, &m_iSerialIncomingByte, m_link_cable_user_data);
     }
 
     TraceSerialEvent(TRACE_SERIAL_TRANSFER_START, current_cycle);
@@ -538,7 +579,7 @@ u32 Processor::GetFirstSerialShiftCycles(bool fast_cgb) const
 
 void Processor::PollExternalSerialTransfer(u64 current_cycle)
 {
-    if (!m_bLinkCableConnected || !m_link_cable_poll_callback || !m_bSerialWaitingExternal || m_bSerialTransferActive)
+    if (!m_bSerialConnected || !m_link_cable_poll_callback || !m_bSerialWaitingExternal || m_bSerialTransferActive)
     {
         return;
     }
@@ -634,7 +675,7 @@ void Processor::ShiftSerialBit(u64 edge_cycle)
         TraceSerialEvent(TRACE_SERIAL_TRANSFER_END, edge_cycle);
         RequestInterrupt(Serial_Interrupt);
         TraceSerialEvent(TRACE_SERIAL_IRQ_REQUEST, edge_cycle);
-        PublishSerialState(edge_cycle);
+        PublishSerialState(edge_cycle, GB_SerialEvent_Complete);
 
         m_bSerialTransferActive = false;
         m_bSerialWaitingExternal = false;
@@ -815,7 +856,6 @@ void Processor::PopulateDisassemblerRecord(GB_Disassembler_Record* record, u16 a
 {
 #ifndef GEARBOY_DISABLE_DISASSEMBLER
 
-    record->address = m_pMemory->GetPhysicalAddress(address);
     record->bank = m_pMemory->GetBank(address);
     record->name[0] = 0;
     record->bytes[0] = 0;
@@ -1203,11 +1243,51 @@ void Processor::EnableBreakpoints(bool enable, bool irqs)
 {
     m_breakpoints_enabled = enable;
     m_breakpoints_irq_enabled = irqs;
+    RefreshMemoryHooks();
 }
 
 void Processor::ResetBreakpoints()
 {
     m_breakpoints.clear();
+}
+
+void Processor::SetVBlankWatch(bool read, bool write, u16 address)
+{
+    if ((m_vblank_watch_read == read) && (m_vblank_watch_write == write) &&
+        (m_vblank_watch_address == address))
+        return;
+
+    m_vblank_watch_read = read;
+    m_vblank_watch_write = write;
+    m_vblank_watch_address = address;
+    ResetVBlankWatch();
+    RefreshMemoryHooks();
+}
+
+u32 Processor::UpdateVBlankWatch()
+{
+    if (!m_vblank_watch_read && !m_vblank_watch_write)
+        return 0;
+
+    bool missed = m_vblank_watch_armed && !m_vblank_watch_hit;
+    m_vblank_watch_armed = true;
+    m_vblank_watch_hit = false;
+    m_vblank_watch_misses = missed ? m_vblank_watch_misses + 1 : 0;
+
+    return m_vblank_watch_misses;
+}
+
+void Processor::RefreshMemoryHooks()
+{
+    m_memory_hooks_read = m_vblank_watch_read || m_breakpoints_enabled;
+    m_memory_hooks_write = m_vblank_watch_write || m_breakpoints_enabled;
+}
+
+void Processor::ResetVBlankWatch()
+{
+    m_vblank_watch_hit = false;
+    m_vblank_watch_armed = false;
+    m_vblank_watch_misses = 0;
 }
 
 bool Processor::AddBreakpoint(int type, char* text, bool read, bool write, bool execute)
@@ -1343,6 +1423,19 @@ bool Processor::IsBreakpoint(int type, u16 address)
     return false;
 }
 
+void Processor::ResetDebuggerExecutionState()
+{
+    ClearDisassemblerCallStack();
+    m_run_to_breakpoint_requested = false;
+    m_cpu_breakpoint_hit = false;
+    m_memory_breakpoint_hit = false;
+    m_run_to_breakpoint_hit = false;
+    m_debug_next_irq = 0;
+
+    if (IsValidPointer(m_pProfiler))
+        m_pProfiler->ResetStack();
+}
+
 void Processor::ClearDisassemblerCallStack()
 {
     while(!m_disassembler_call_stack.empty())
@@ -1395,6 +1488,29 @@ void Processor::CheckMemoryBreakpoints(int type, u16 address, bool read)
 #endif
 }
 
+void Processor::SetGameSharkCheat(const char* szCheat)
+{
+    std::string code(szCheat);
+    for (std::string::iterator p = code.begin(); code.end() != p; ++p)
+        *p = toupper(*p);
+
+    if (code.length() == 8)
+    {
+        GameSharkCode gsc;
+
+        gsc.type = AsHex(code[0]) << 4 | AsHex(code[1]);
+        gsc.value = (AsHex(code[2]) << 4 | AsHex(code[3])) & 0xFF;
+        gsc.address = (AsHex(code[4]) << 4 | AsHex(code[5]) | AsHex(code[6]) << 12 | AsHex(code[7]) << 8) & 0xFFFF;
+
+        m_GameSharkList.push_back(gsc);
+    }
+}
+
+void Processor::ClearGameSharkCheats()
+{
+    m_GameSharkList.clear();
+}
+
 void Processor::SaveState(std::ostream& stream)
 {
     using namespace std;
@@ -1429,9 +1545,10 @@ void Processor::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_iSpeedMultiplier), sizeof(m_iSpeedMultiplier));
     stream.write(reinterpret_cast<const char*> (&m_iAccurateOPCodeState), sizeof(m_iAccurateOPCodeState));
     stream.write(reinterpret_cast<const char*> (&m_iReadCache), sizeof(m_iReadCache));
+    stream.write(reinterpret_cast<const char*> (&m_OpcodeCache), sizeof(m_OpcodeCache));
 }
 
-void Processor::LoadState(std::istream& stream)
+void Processor::LoadState(std::istream& stream, u32 version)
 {
     using namespace std;
 
@@ -1473,11 +1590,15 @@ void Processor::LoadState(std::istream& stream)
     m_iMachineCycle = 4 >> m_iSpeedMultiplier;
     stream.read(reinterpret_cast<char*> (&m_iAccurateOPCodeState), sizeof(m_iAccurateOPCodeState));
     stream.read(reinterpret_cast<char*> (&m_iReadCache), sizeof(m_iReadCache));
+    m_OpcodeCache = 0xFFFF;
+    if (version >= 112)
+        stream.read(reinterpret_cast<char*> (&m_OpcodeCache), sizeof(m_OpcodeCache));
 
     int serial_bit = m_iSerialBit;
     int serial_cycles = m_iSerialCycles;
     ResetSerialRuntime();
     m_bLinkCableConnected = false;
+    m_bSerialConnected = false;
 
     if ((m_pMemory->Retrieve(0xFF02) & 0x80) != 0)
     {
@@ -1485,29 +1606,164 @@ void Processor::LoadState(std::istream& stream)
         m_iSerialCycles = serial_cycles;
         m_bSerialRestorePending = true;
     }
+
+    ResetVBlankWatch();
 }
 
-void Processor::SetGameSharkCheat(const char* szCheat)
+void Processor::SaveSerialState(std::ostream& stream)
 {
-    std::string code(szCheat);
-    for (std::string::iterator p = code.begin(); code.end() != p; ++p)
-        *p = toupper(*p);
+    u8 flags = 0;
 
-    if (code.length() == 8)
+    if (m_bSerialTransferActive)
+        flags |= 1 << 0;
+
+    if (m_bSerialWaitingExternal)
+        flags |= 1 << 1;
+
+    if (m_bSerialInternalClock)
+        flags |= 1 << 2;
+
+    if (m_bSerialControlWritePending)
+        flags |= 1 << 3;
+
+    if (m_bSerialDataWritePending)
+        flags |= 1 << 4;
+
+    if (m_bSerialRestorePending)
+        flags |= 1 << 5;
+
+    if (m_bSerialBytesValid)
+        flags |= 1 << 6;
+
+    const u64 state_values[] =
     {
-        GameSharkCode gsc;
+        flags, (u64)(m_iSerialBit + 1), (u64)m_iSerialCycles,
+        m_iSerialPendingControl, m_iSerialPendingData, m_iSerialIncomingByte, m_iSerialOutgoingByte,
+        m_iSerialDividerOffset, m_iSerialBitCycles, m_iSerialTransferId, m_iSerialRequestCycle, m_iSerialNextShiftCycle
+    };
 
-        gsc.type = AsHex(code[0]) << 4 | AsHex(code[1]);
-        gsc.value = (AsHex(code[2]) << 4 | AsHex(code[3])) & 0xFF;
-        gsc.address = (AsHex(code[4]) << 4 | AsHex(code[5]) | AsHex(code[6]) << 12 | AsHex(code[7]) << 8) & 0xFFFF;
+    const int field_sizes[] = { 1, 1, 4, 1, 1, 1, 1, 1, 4, 4, 8, 8 };
+    u8 state[k_serial_state_size];
+    int byte_offset = 0;
 
-        m_GameSharkList.push_back(gsc);
+    for (int i = 0; i < 12; i++)
+    {
+        for (int j = 0; j < field_sizes[i]; j++)
+            state[byte_offset++] = (u8)(state_values[i] >> (j * 8));
     }
+
+    stream.write((const char*)state, sizeof(state));
 }
 
-void Processor::ClearGameSharkCheats()
+bool Processor::LoadSerialState(std::istream& stream, bool apply_state)
 {
-    m_GameSharkList.clear();
+    const int field_sizes[] = { 1, 1, 4, 1, 1, 1, 1, 1, 4, 4, 8, 8 };
+    u64 state_values[12] = {};
+    u8 state[k_serial_state_size] = {};
+
+    stream.read((char*)state, sizeof(state));
+
+    if (!stream.good())
+        return false;
+
+    int byte_offset = 0;
+
+    for (int i = 0; i < 12; i++)
+    {
+        for (int j = 0; j < field_sizes[i]; j++)
+            state_values[i] |= (u64)state[byte_offset++] << (j * 8);
+    }
+
+    if (state_values[0] > 127 || state_values[1] > 8 || state_values[2] > 512 || state_values[8] > 512)
+        return false;
+
+    if ((state_values[0] & 1) && (state_values[1] == 0 || state_values[8] == 0 || (state_values[0] & 2)))
+        return false;
+
+    if (!apply_state)
+        return true;
+
+    m_bSerialTransferActive = (state_values[0] & (1 << 0)) != 0;
+    m_bSerialWaitingExternal = (state_values[0] & (1 << 1)) != 0;
+    m_bSerialInternalClock = (state_values[0] & (1 << 2)) != 0;
+    m_bSerialControlWritePending = (state_values[0] & (1 << 3)) != 0;
+    m_bSerialDataWritePending = (state_values[0] & (1 << 4)) != 0;
+    m_bSerialRestorePending = (state_values[0] & (1 << 5)) != 0;
+    m_bSerialBytesValid = (state_values[0] & (1 << 6)) != 0;
+
+    m_iSerialBit = (int)state_values[1] - 1;
+    m_iSerialCycles = (int)state_values[2];
+    m_iSerialPendingControl = (u8)state_values[3];
+    m_iSerialPendingData = (u8)state_values[4];
+    m_iSerialIncomingByte = (u8)state_values[5];
+    m_iSerialOutgoingByte = (u8)state_values[6];
+    m_iSerialDividerOffset = (u8)state_values[7];
+    m_iSerialBitCycles = (u32)state_values[8];
+    m_iSerialTransferId = (u32)state_values[9];
+    m_iSerialRequestCycle = state_values[10];
+    m_iSerialNextShiftCycle = state_values[11];
+
+    return true;
+}
+
+void Processor::SaveLinkCableState(std::ostream& stream)
+{
+    stream.write(reinterpret_cast<const char*>(&m_iSerialBit), sizeof(m_iSerialBit));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialCycles), sizeof(m_iSerialCycles));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialTransferActive), sizeof(m_bSerialTransferActive));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialWaitingExternal), sizeof(m_bSerialWaitingExternal));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialInternalClock), sizeof(m_bSerialInternalClock));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialControlWritePending), sizeof(m_bSerialControlWritePending));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialDataWritePending), sizeof(m_bSerialDataWritePending));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialRestorePending), sizeof(m_bSerialRestorePending));
+    stream.write(reinterpret_cast<const char*>(&m_bSerialBytesValid), sizeof(m_bSerialBytesValid));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialPendingControl), sizeof(m_iSerialPendingControl));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialPendingData), sizeof(m_iSerialPendingData));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialIncomingByte), sizeof(m_iSerialIncomingByte));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialOutgoingByte), sizeof(m_iSerialOutgoingByte));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialDividerOffset), sizeof(m_iSerialDividerOffset));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialBitCycles), sizeof(m_iSerialBitCycles));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialTransferId), sizeof(m_iSerialTransferId));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialRequestCycle), sizeof(m_iSerialRequestCycle));
+    stream.write(reinterpret_cast<const char*>(&m_iSerialNextShiftCycle), sizeof(m_iSerialNextShiftCycle));
+    stream.write(reinterpret_cast<const char*>(&m_bLinkCableConnected), sizeof(m_bLinkCableConnected));
+    stream.write(reinterpret_cast<const char*>(&m_iLinkCableNextSyncCycle), sizeof(m_iLinkCableNextSyncCycle));
+    stream.write(reinterpret_cast<const char*>(&m_iLinkCableSyncCycles), sizeof(m_iLinkCableSyncCycles));
+}
+
+void Processor::LoadLinkCableState(std::istream& stream)
+{
+    stream.read(reinterpret_cast<char*>(&m_iSerialBit), sizeof(m_iSerialBit));
+    stream.read(reinterpret_cast<char*>(&m_iSerialCycles), sizeof(m_iSerialCycles));
+    stream.read(reinterpret_cast<char*>(&m_bSerialTransferActive), sizeof(m_bSerialTransferActive));
+    stream.read(reinterpret_cast<char*>(&m_bSerialWaitingExternal), sizeof(m_bSerialWaitingExternal));
+    stream.read(reinterpret_cast<char*>(&m_bSerialInternalClock), sizeof(m_bSerialInternalClock));
+    stream.read(reinterpret_cast<char*>(&m_bSerialControlWritePending), sizeof(m_bSerialControlWritePending));
+    stream.read(reinterpret_cast<char*>(&m_bSerialDataWritePending), sizeof(m_bSerialDataWritePending));
+    stream.read(reinterpret_cast<char*>(&m_bSerialRestorePending), sizeof(m_bSerialRestorePending));
+    stream.read(reinterpret_cast<char*>(&m_bSerialBytesValid), sizeof(m_bSerialBytesValid));
+    stream.read(reinterpret_cast<char*>(&m_iSerialPendingControl), sizeof(m_iSerialPendingControl));
+    stream.read(reinterpret_cast<char*>(&m_iSerialPendingData), sizeof(m_iSerialPendingData));
+    stream.read(reinterpret_cast<char*>(&m_iSerialIncomingByte), sizeof(m_iSerialIncomingByte));
+    stream.read(reinterpret_cast<char*>(&m_iSerialOutgoingByte), sizeof(m_iSerialOutgoingByte));
+    stream.read(reinterpret_cast<char*>(&m_iSerialDividerOffset), sizeof(m_iSerialDividerOffset));
+    stream.read(reinterpret_cast<char*>(&m_iSerialBitCycles), sizeof(m_iSerialBitCycles));
+    stream.read(reinterpret_cast<char*>(&m_iSerialTransferId), sizeof(m_iSerialTransferId));
+    stream.read(reinterpret_cast<char*>(&m_iSerialRequestCycle), sizeof(m_iSerialRequestCycle));
+    stream.read(reinterpret_cast<char*>(&m_iSerialNextShiftCycle), sizeof(m_iSerialNextShiftCycle));
+    stream.read(reinterpret_cast<char*>(&m_bLinkCableConnected), sizeof(m_bLinkCableConnected));
+    stream.read(reinterpret_cast<char*>(&m_iLinkCableNextSyncCycle), sizeof(m_iLinkCableNextSyncCycle));
+    stream.read(reinterpret_cast<char*>(&m_iLinkCableSyncCycles), sizeof(m_iLinkCableSyncCycles));
+
+    m_bSerialConnected = m_bLinkCableConnected;
+}
+
+void Processor::SetPC(u16 value)
+{
+    PC.SetValue(value);
+    m_iAccurateOPCodeState = 0;
+    m_OpcodeCache = 0xFFFF;
+    m_bSkipPCBug = false;
 }
 
 Processor::ProcessorState* Processor::GetState()

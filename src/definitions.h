@@ -55,10 +55,6 @@
 #define NULL 0
 #endif
 
-#ifdef _WIN32
-#define BLARGG_USE_NAMESPACE 1
-#endif
-
 //#define GEARBOY_DISABLE_DISASSEMBLER
 
 #define MAX_ROM_SIZE 0x800000
@@ -99,8 +95,6 @@ typedef int32_t s32;
 typedef uint64_t u64;
 typedef int64_t s64;
 
-typedef void (*RamChangedCallback) (void);
-
 #define FLAG_ZERO 0x80
 #define FLAG_SUB 0x40
 #define FLAG_HALF 0x20
@@ -109,7 +103,7 @@ typedef void (*RamChangedCallback) (void);
 
 #define GEARBOY_MASTER_CLOCK_RATE 4194304
 
-#define GEARBOY_MAX_GAMEPADS 1
+#define GEARBOY_MAX_GAMEPADS 4
 
 #define GAMEBOY_WIDTH 160
 #define GAMEBOY_HEIGHT 144
@@ -127,7 +121,7 @@ typedef void (*RamChangedCallback) (void);
 #define SAVESTATE_MAGIC 0x28011983
 
 #define GB_SAVESTATE_MAGIC 0x28011983
-#define GB_SAVESTATE_VERSION 104
+#define GB_SAVESTATE_VERSION 117
 #define GB_SAVESTATE_MIN_VERSION 100
 #define GB_SAVESTATE_LEGACY_VERSION 0
 #define GB_SAVESTATE_MBC6_VERSION 104
@@ -194,6 +188,10 @@ struct GB_RuntimeInfo
     int screen_width;
     int screen_height;
     double fps;
+    int system_type;
+    int active_region[4];
+    bool display_enabled;
+    bool color_correction;
 };
 
 enum GB_Disassembler_Syntax
@@ -206,7 +204,6 @@ enum GB_Disassembler_Syntax
 
 struct GB_Disassembler_Record
 {
-    u32 address;
     u8 bank;
     char name[64];
     char bytes[25];

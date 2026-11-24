@@ -7,6 +7,7 @@ SOURCES_C := \
 SOURCES_CXX := \
     $(SRC_DIR)/Audio.cpp \
     $(SRC_DIR)/Cartridge.cpp \
+    $(SRC_DIR)/BarcodeBoy.cpp \
     $(SRC_DIR)/CommonMemoryRule.cpp \
     $(SRC_DIR)/GearboyCore.cpp \
     $(SRC_DIR)/Input.cpp \
@@ -15,6 +16,7 @@ SOURCES_CXX := \
     $(SRC_DIR)/MBC2MemoryRule.cpp \
     $(SRC_DIR)/MBC3MemoryRule.cpp \
     $(SRC_DIR)/MBC5MemoryRule.cpp \
+    $(SRC_DIR)/MBC5LogoMemoryRule.cpp \
     $(SRC_DIR)/MBC6MemoryRule.cpp \
     $(SRC_DIR)/Memory.cpp \
     $(SRC_DIR)/MemoryRule.cpp \
@@ -29,7 +31,16 @@ SOURCES_CXX := \
     $(SRC_DIR)/M161MemoryRule.cpp \
     $(SRC_DIR)/SachenMMC1MemoryRule.cpp \
     $(SRC_DIR)/SachenMMC2MemoryRule.cpp \
+    $(SRC_DIR)/RocketMemoryRule.cpp \
     $(SRC_DIR)/FlashcartMemoryRule.cpp \
+    $(SRC_DIR)/BHGOSMemoryRule.cpp \
+    $(SRC_DIR)/LiChengMemoryRule.cpp \
+    $(SRC_DIR)/NTNewMemoryRule.cpp \
+    $(SRC_DIR)/GGB81MemoryRule.cpp \
+    $(SRC_DIR)/HitekMemoryRule.cpp \
+    $(SRC_DIR)/VF001MemoryRule.cpp \
+    $(SRC_DIR)/SintaxMemoryRule.cpp \
+    $(SRC_DIR)/NTOldMemoryRule.cpp \
     $(SRC_DIR)/opcodes.cpp \
     $(SRC_DIR)/opcodes_cb.cpp \
     $(SRC_DIR)/Processor.cpp \
@@ -38,6 +49,7 @@ SOURCES_CXX := \
     $(SRC_DIR)/VgmRecorder.cpp \
     $(SRC_DIR)/SGB.cpp \
     $(SRC_DIR)/TraceLogger.cpp \
+    $(SRC_DIR)/Profiler.cpp \
     ../platforms/shared/desktop/trace_logger_formatter.cpp \
     $(SRC_DIR)/audio/Blip_Buffer.cpp \
     $(SRC_DIR)/audio/Effects_Buffer.cpp \

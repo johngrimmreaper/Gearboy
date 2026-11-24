@@ -33,6 +33,7 @@
 #include "SixteenBitRegister.h"
 #include "MemoryRule.h"
 #include "TraceLogger.h"
+#include "Profiler.h"
 
 #endif	/* GEARBOY_H */
 

@@ -24,16 +24,21 @@
 #include "../emu.h"
 #include "../gui.h"
 #include "../gui_actions.h"
+#include "../gui_cheats.h"
 #include "../gui_debug_disassembler.h"
 #include "../gui_debug_memory.h"
 #include "../gui_debug_memeditor.h"
 #include "../gui_debug_rewind.h"
 #include "../gui_debug_trace_logger.h"
+#include "../gui_debug_profiler.h"
 #include "../trace_logger_formatter.h"
 #include "../config.h"
 #include "../events.h"
 #include "../rewind.h"
+#include "../video_recorder.h"
 #include <cstring>
+#include <cctype>
+#include <cmath>
 #include <sstream>
 #include <iomanip>
 #include <vector>
@@ -153,7 +158,7 @@ void DebugAdapter::StepFrame(int frames)
 
 void DebugAdapter::Reset()
 {
-    emu_reset(false, Cartridge::CartridgeNotSupported, false);
+    emu_reset(config_emulator.force_dmg, gui_get_mbc(config_emulator.mbc), config_emulator.force_gba);
 }
 
 json DebugAdapter::GetDebugStatus()
@@ -267,30 +272,6 @@ std::vector<BreakpointInfo> DebugAdapter::ListBreakpoints()
     return result;
 }
 
-RegistersSnapshot DebugAdapter::GetRegisters()
-{
-    Debug("[MCP] GetRegisters: start");
-
-    Processor* cpu = m_core->GetProcessor();
-    Processor::ProcessorState* state = cpu->GetState();
-
-    Debug("[MCP] GetRegisters: creating snapshot");
-    RegistersSnapshot snapshot;
-
-    snapshot.AF = state->AF->GetValue();
-    snapshot.BC = state->BC->GetValue();
-    snapshot.DE = state->DE->GetValue();
-    snapshot.HL = state->HL->GetValue();
-    snapshot.SP = state->SP->GetValue();
-    snapshot.PC = state->PC->GetValue();
-    snapshot.IME = *state->IME;
-    snapshot.Halt = *state->Halt;
-    snapshot.DoubleSpeed = cpu->CGBSpeed();
-
-    Debug("[MCP] GetRegisters: done (PC=%04X)", snapshot.PC);
-    return snapshot;
-}
-
 void DebugAdapter::SetRegister(const std::string& name, u32 value)
 {
     Processor* cpu = m_core->GetProcessor();
@@ -307,7 +288,7 @@ void DebugAdapter::SetRegister(const std::string& name, u32 value)
     else if (name == "SP")
         state->SP->SetValue((u16)value);
     else if (name == "PC")
-        state->PC->SetValue((u16)value);
+        cpu->SetPC((u16)value);
     else if (name == "A")
         state->AF->SetHigh((u8)value);
     else if (name == "F")
@@ -523,12 +504,18 @@ MemoryAreaInfo DebugAdapter::GetMemoryAreaInfo(int area)
             info.name = "ROM0";
             info.data = memory->GetROM0();
             info.size = 0x4000;
+            info.read_only = memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeVF001 ||
+                    memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeVF001A;
             break;
         case MEMORY_EDITOR_ROM1:
             info.name = "ROM1";
             info.data = memory->GetROM1();
             info.size = 0x4000;
-            info.read_only = memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeMBC6;
+            info.read_only = memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeMBC6 ||
+                    memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeNTNew ||
+                    memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeGGB81 ||
+                    memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeHitek ||
+                    memory->GetCurrentRule()->GetMapperType() == Cartridge::CartridgeSintax;
             break;
         case MEMORY_EDITOR_VRAM:
             info.name = "VRAM";
@@ -539,7 +526,11 @@ MemoryAreaInfo DebugAdapter::GetMemoryAreaInfo(int area)
         {
             info.name = "RAM";
             MemoryRule* rule = memory->GetCurrentRule();
-            if (IsValidPointer(rule) && (m_core->GetCartridge()->HasRam() || rule->GetMapperType() == Cartridge::CartridgeMBC6))
+            if (IsValidPointer(rule) && (m_core->GetCartridge()->HasRam() ||
+                    rule->GetMapperType() == Cartridge::CartridgeMBC6 || rule->GetMapperType() == Cartridge::CartridgeLiCheng ||
+                    rule->GetMapperType() == Cartridge::CartridgeNTNew || rule->GetMapperType() == Cartridge::CartridgeGGB81 ||
+                    rule->GetMapperType() == Cartridge::CartridgeHitek || rule->GetMapperType() == Cartridge::CartridgeSintax ||
+                    ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0)))
             {
                 size_t ram_size = rule->GetRamSize();
                 if (ram_size > 0x2000)
@@ -729,13 +720,21 @@ json DebugAdapter::GetMediaInfo()
         "MBC5", "MBC1 Multi", "HuC1", "HuC3",
         "MMM01", "Camera", "MBC7", "TAMA5",
         "Wisdom Tree", "M161", "Sachen MMC1",
-        "Sachen MMC2", "PKJD", "Bung/EMS", "Poke 2-in-1", "MBC6", "Not Supported"
+        "Sachen MMC2", "PKJD", "Bung/EMS", "Poke 2-in-1", "MBC6", "Rocket Games", "BHGOS", "Li Cheng", "NT newer", "GGB81", "Hitek", "VF001", "VF001 (SL)", "Sintax", "NT old 1", "NT old 2", "Not Supported"
     };
     int type_idx = (int)type;
     if (type_idx >= 0 && type_idx < (int)(sizeof(type_names) / sizeof(type_names[0])))
         info["cartridge_type"] = type_names[type_idx];
     else
         info["cartridge_type"] = "Unknown";
+
+    type_idx = (int)m_core->GetMapperType();
+    if (!cart->IsLoadedROM())
+        info["active_mapper"] = json();
+    else if (type_idx >= 0 && type_idx < (int)(sizeof(type_names) / sizeof(type_names[0])))
+        info["active_mapper"] = type_names[type_idx];
+    else
+        info["active_mapper"] = "Unknown";
 
     if (m_core->IsCGB())
         info["system"] = m_core->IsGBA() ? "Game Boy Color (GBA mode)" : "Game Boy Color";
@@ -1377,6 +1376,96 @@ json DebugAdapter::GetScreenshot()
     return result;
 }
 
+static const char* const k_video_recording_ratios[] = { "screen", "square", "4:3", "16:9", "16:10" };
+static const char* const k_video_recording_qualities[] = { "low", "medium", "high", "lossless", "lossless_compressed" };
+static const int k_video_recording_ratio_count = sizeof(k_video_recording_ratios) / sizeof(k_video_recording_ratios[0]);
+static const int k_video_recording_quality_count = sizeof(k_video_recording_qualities) / sizeof(k_video_recording_qualities[0]);
+
+static int find_video_recording_option(const std::string& value, const char* const* options, int count)
+{
+    for (int i = 0; i < count; i++)
+    {
+        if (value == options[i])
+            return i;
+    }
+    return -1;
+}
+
+json DebugAdapter::StartVideoRecording(const std::string& file_path, int scale, const std::string& aspect_ratio, const std::string& quality)
+{
+    json result;
+
+    if (!m_core || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        Log("[MCP] StartVideoRecording failed: No media loaded");
+        return result;
+    }
+
+    if (emu_is_video_recording())
+    {
+        result["error"] = "Video recording is already active";
+        return result;
+    }
+
+    int ratio = aspect_ratio.empty() ? config_video.recording_ratio : find_video_recording_option(aspect_ratio, k_video_recording_ratios, k_video_recording_ratio_count);
+    int quality_index = quality.empty() ? config_video.recording_quality : find_video_recording_option(quality, k_video_recording_qualities, k_video_recording_quality_count);
+
+    if ((scale != 0) && ((scale < 1) || (scale > 20)))
+    {
+        result["error"] = "Invalid scale";
+        return result;
+    }
+
+    if ((ratio < 0) || (quality_index < 0))
+    {
+        result["error"] = "Invalid aspect ratio or quality";
+        return result;
+    }
+
+    if (scale != 0)
+        config_video.recording_scale = scale;
+    config_video.recording_ratio = ratio;
+    config_video.recording_quality = quality_index;
+
+    if (!gui_action_start_video_recording(file_path.empty() ? NULL : file_path.c_str()))
+    {
+        result["error"] = "Failed to start video recording";
+        Log("[MCP] StartVideoRecording failed: %s", file_path.c_str());
+        return result;
+    }
+
+    result["success"] = true;
+    result["file_path"] = video_recorder_get_file_path();
+    result["scale"] = config_video.recording_scale;
+    result["aspect_ratio"] = k_video_recording_ratios[config_video.recording_ratio];
+    result["quality"] = k_video_recording_qualities[config_video.recording_quality];
+
+    return result;
+}
+
+json DebugAdapter::StopVideoRecording()
+{
+    json result;
+
+    if (!emu_is_video_recording())
+    {
+        result["error"] = "Video recording is not active";
+        return result;
+    }
+
+    std::string file_path = video_recorder_get_file_path();
+    u32 frames = video_recorder_get_frame_count();
+
+    gui_action_stop_video_recording();
+
+    result["success"] = true;
+    result["file_path"] = file_path;
+    result["frames"] = frames;
+
+    return result;
+}
+
 json DebugAdapter::GetSGBStatus()
 {
     json result;
@@ -1597,7 +1686,12 @@ json DebugAdapter::SaveState()
     }
 
     int slot = config_emulator.save_slot + 1;
-    emu_save_state_slot(slot);
+    if (!emu_save_state_slot(slot))
+    {
+        result["error"] = "Failed to save state slot";
+        Log("[MCP] SaveState failed: Slot %d", slot);
+        return result;
+    }
 
     result["success"] = true;
     result["slot"] = slot;
@@ -1628,7 +1722,12 @@ json DebugAdapter::LoadState()
         return result;
     }
 
-    emu_load_state_slot(slot);
+    if (!emu_load_state_slot(slot))
+    {
+        result["error"] = "Failed to load state slot";
+        Log("[MCP] LoadState failed: Slot %d", slot);
+        return result;
+    }
 
     result["success"] = true;
     result["slot"] = slot;
@@ -1694,6 +1793,7 @@ json DebugAdapter::LoadStateFile(const std::string& file_path)
         return result;
     }
 
+    emu_debug_state_restored();
     events_sync_input();
     rewind_reset();
 
@@ -2802,6 +2902,12 @@ json DebugAdapter::MemoryFind(int area, const std::string& value, bool text, boo
 json DebugAdapter::GetTraceLog(s64 start, int count)
 {
     json result;
+    const char* stop_reason = gui_debug_trace_logger_get_stop_reason();
+    result["enabled"] = gui_debug_trace_logger_is_enabled();
+
+    if (IsValidPointer(stop_reason))
+        result["stopped_by"] = stop_reason;
+
 
     TraceLogger* tl = m_core->GetTraceLogger();
     if (!tl)
@@ -2884,8 +2990,10 @@ json DebugAdapter::GetTraceLog(s64 start, int count)
 
 json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& output,
     const std::string& memory_size, const std::string& disk_size,
-    const std::string& output_path, const u32* event_filters)
+    const std::string& output_path, const u32* event_filters,
+    const std::string& vblank_watch_address, const std::string& vblank_watch_operation)
 {
+    static const char* const k_vblank_watch_operations[] = { "read", "write", "read_write" };
     json result;
 
     TraceLogger* tl = m_core->GetTraceLogger();
@@ -2933,6 +3041,34 @@ json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& outpu
             }
         }
 
+        int vblank_watch_address_value = config_debug.trace_vblank_watch_address;
+        if (!vblank_watch_address.empty())
+        {
+            u16 address = 0;
+            if (!parse_hex_with_prefix(vblank_watch_address, &address))
+            {
+                result["error"] = "Invalid vblank watch address";
+                return result;
+            }
+            vblank_watch_address_value = address;
+        }
+
+        int vblank_watch_operation_value = config_debug.trace_vblank_watch_operation;
+        if (!vblank_watch_operation.empty())
+        {
+            vblank_watch_operation_value = -1;
+            for (int i = 0; i < 3; i++)
+            {
+                if (vblank_watch_operation == k_vblank_watch_operations[i])
+                    vblank_watch_operation_value = i;
+            }
+            if (vblank_watch_operation_value < 0)
+            {
+                result["error"] = "Invalid vblank watch operation";
+                return result;
+            }
+        }
+
         bool configuration_changed = output_value != config_debug.trace_output;
         if (output_value == gui_TraceOutput_Memory)
             configuration_changed = configuration_changed || memory_size_value != config_debug.trace_capacity;
@@ -2963,6 +3099,8 @@ json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& outpu
         }
 
         gui_debug_trace_logger_set_event_filters(event_filters);
+        config_debug.trace_vblank_watch_address = vblank_watch_address_value;
+        config_debug.trace_vblank_watch_operation = vblank_watch_operation_value;
 
         if (!gui_debug_trace_logger_start(flags))
         {
@@ -2990,6 +3128,9 @@ json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& outpu
         if ((lcd & TRACE_LCD_FILTER_REGISTERS) == TRACE_LCD_FILTER_REGISTERS) event_filter_list.push_back("lcd.registers");
         if ((lcd & TRACE_LCD_FILTER_INTERRUPTS) == TRACE_LCD_FILTER_INTERRUPTS) event_filter_list.push_back("lcd.interrupts");
         if ((lcd & TRACE_LCD_FILTER_DMA) == TRACE_LCD_FILTER_DMA) event_filter_list.push_back("lcd.dma");
+        if ((lcd & TRACE_LCD_FILTER_SPRITE_BUDGET) != 0) event_filter_list.push_back("lcd.sprite_budget");
+        if ((lcd & TRACE_LCD_FILTER_SPRITE_LIMIT) != 0) event_filter_list.push_back("lcd.sprite_limit");
+        if ((lcd & TRACE_LCD_FILTER_MISSED_VBLANK) != 0) event_filter_list.push_back("lcd.missed_vblank");
         if ((input & TRACE_INPUT_FILTER_READS) != 0) event_filter_list.push_back("input.reads");
         if ((input & TRACE_INPUT_FILTER_WRITES) != 0) event_filter_list.push_back("input.writes");
         if ((timer & TRACE_TIMER_FILTER_INTERRUPTS) != 0) event_filter_list.push_back("timer.interrupts");
@@ -3007,6 +3148,14 @@ json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& outpu
         if ((mapper & TRACE_MAPPER_FILTER_RAM_RTC) != 0) event_filter_list.push_back("mapper.ram_rtc");
         if ((mapper & TRACE_MAPPER_FILTER_CONTROL) != 0) event_filter_list.push_back("mapper.control");
         result["filters"] = event_filter_list;
+
+        if ((lcd & TRACE_LCD_FILTER_MISSED_VBLANK) != 0)
+        {
+            char address[8];
+            snprintf(address, sizeof(address), "%04X", config_debug.trace_vblank_watch_address);
+            result["vblank_watch_address"] = address;
+            result["vblank_watch_operation"] = k_vblank_watch_operations[config_debug.trace_vblank_watch_operation];
+        }
     }
     else
     {
@@ -3020,5 +3169,281 @@ json DebugAdapter::SetTraceLog(bool enabled, u32 flags, const std::string& outpu
     }
 
     result["total_entries"] = tl->GetCount();
+    return result;
+}
+
+struct ProfilerEntry
+{
+    u32 index;
+    u64 key;
+    std::string name;
+    const char* symbol;
+};
+
+static const char* const k_profiler_type_names[] = { "root", "halt", "call", "irq" };
+
+static bool profiler_entry_compare(const ProfilerEntry& a, const ProfilerEntry& b)
+{
+    if (a.key != b.key)
+        return a.key > b.key;
+    return a.index < b.index;
+}
+
+static double profiler_round(double value)
+{
+    return floor((value * 100.0) + 0.5) / 100.0;
+}
+
+json DebugAdapter::SetProfiler(const std::string& action)
+{
+    json result;
+
+    Profiler* profiler = m_core->GetProfiler();
+    if (!IsValidPointer(profiler))
+    {
+        result["error"] = "Profiler not available";
+        return result;
+    }
+
+    if (action == "start")
+    {
+        if (!config_debug.debug)
+        {
+            config_debug.debug = true;
+            emu_debug_continue();
+        }
+        gui_debug_profiler_show(true);
+    }
+    else if (action == "stop")
+        gui_debug_profiler_show(false);
+    else if (action == "reset")
+    {
+        profiler->Reset();
+        gui_debug_profiler_reset();
+    }
+    else
+    {
+        result["error"] = "Invalid profiler action";
+        return result;
+    }
+
+    result["success"] = true;
+    result["action"] = action;
+    result["window_open"] = config_debug.show_profiler;
+    return result;
+}
+
+json DebugAdapter::GetProfilerData(const std::string& sort, int count, const std::string& filter)
+{
+    json result;
+
+    Profiler* profiler = m_core->GetProfiler();
+    if (!IsValidPointer(profiler) || !IsValidPointer(profiler->GetFunctions()))
+    {
+        result["error"] = "Profiler not available";
+        return result;
+    }
+
+    if (count < 1)
+        count = 50;
+    if (count > 1000)
+        count = 1000;
+
+    profiler->Sync();
+
+    const GB_Profiler_Function* functions = profiler->GetFunctions();
+    u32 function_count = profiler->GetFunctionCount();
+    u64 total = profiler->GetTotalCycles();
+    u32 frame_cycles = gui_debug_profiler_get_frame_cycles();
+    double frames = (frame_cycles > 0) ? (double)total / (double)frame_cycles : 0.0;
+
+    std::string filter_upper = filter;
+    std::transform(filter_upper.begin(), filter_upper.end(), filter_upper.begin(), ::toupper);
+
+    std::vector<ProfilerEntry> entries;
+
+    for (u32 i = 0; i < function_count; i++)
+    {
+        const GB_Profiler_Function& function = functions[i];
+        bool pseudo = (function.type == PROFILER_FUNCTION_ROOT) || (function.type == PROFILER_FUNCTION_HALT);
+
+        ProfilerEntry entry;
+        entry.index = i;
+        entry.key = 0;
+        entry.symbol = "none";
+
+        if (function.type == PROFILER_FUNCTION_ROOT)
+            entry.name = "[Root]";
+        else if (function.type == PROFILER_FUNCTION_HALT)
+            entry.name = "[HALT]";
+        else
+        {
+            bool is_manual = false;
+            const char* name = gui_debug_get_symbol_name(function.bank, function.address, &is_manual);
+            if (IsValidPointer(name))
+            {
+                entry.name = name;
+                entry.symbol = is_manual ? "manual" : "auto";
+            }
+        }
+
+        if (!filter_upper.empty())
+        {
+            std::string name_upper = entry.name;
+            std::transform(name_upper.begin(), name_upper.end(), name_upper.begin(), ::toupper);
+
+            char address[8];
+            snprintf(address, sizeof(address), "%04X", function.address);
+
+            bool name_match = (name_upper.find(filter_upper) != std::string::npos);
+            bool address_match = !pseudo && (std::string(address).find(filter_upper) != std::string::npos);
+
+            if (!name_match && !address_match)
+                continue;
+        }
+
+        if (sort == "exclusive")
+            entry.key = function.exclusive_cycles;
+        else if (sort == "calls")
+            entry.key = function.calls;
+        else if (sort == "average")
+            entry.key = (function.completed > 0) ? function.inclusive_cycles / function.completed : 0;
+        else if (sort == "max")
+            entry.key = (function.completed > 0) ? function.max_cycles : 0;
+        else
+            entry.key = function.inclusive_cycles;
+
+        entries.push_back(entry);
+    }
+
+    std::sort(entries.begin(), entries.end(), profiler_entry_compare);
+
+    json functions_array = json::array();
+
+    for (size_t i = 0; (i < entries.size()) && (i < (size_t)count); i++)
+    {
+        const GB_Profiler_Function& function = functions[entries[i].index];
+        bool root = (function.type == PROFILER_FUNCTION_ROOT);
+        bool pseudo = root || (function.type == PROFILER_FUNCTION_HALT);
+        json item;
+        char text[16];
+
+        item["name"] = entries[i].name;
+        item["type"] = k_profiler_type_names[function.type];
+
+        if (!pseudo)
+        {
+            item["symbol"] = entries[i].symbol;
+            snprintf(text, sizeof(text), "%02X", function.bank);
+            item["bank"] = text;
+            snprintf(text, sizeof(text), "%04X", function.address);
+            item["address"] = text;
+        }
+
+        if (!root)
+        {
+            item["calls"] = function.calls;
+            item["calls_per_frame"] = (frames > 0.0) ? profiler_round((double)function.calls / frames) : 0.0;
+            item["inclusive_cycles"] = function.inclusive_cycles;
+            item["inclusive_percent"] = (total > 0) ? profiler_round(((double)function.inclusive_cycles * 100.0) / (double)total) : 0.0;
+        }
+
+        item["exclusive_cycles"] = function.exclusive_cycles;
+        item["exclusive_percent"] = (total > 0) ? profiler_round(((double)function.exclusive_cycles * 100.0) / (double)total) : 0.0;
+
+        if (!root && (function.completed > 0))
+        {
+            item["average_cycles"] = function.inclusive_cycles / function.completed;
+            item["min_cycles"] = function.min_cycles;
+            item["max_cycles"] = function.max_cycles;
+        }
+
+        functions_array.push_back(item);
+    }
+
+    result["collecting"] = profiler->IsEnabled();
+    result["window_open"] = config_debug.show_profiler;
+    result["total_cycles"] = total;
+    result["frame_cycles"] = frame_cycles;
+    result["frames"] = profiler_round(frames);
+    result["function_count"] = function_count - 2;
+    result["sort"] = sort;
+    result["count"] = functions_array.size();
+    result["functions"] = functions_array;
+
+    return result;
+}
+
+static json cheat_to_json(int index, const gui_CheatEntry* entry)
+{
+    json cheat;
+    cheat["index"] = index;
+    cheat["code"] = entry->code;
+    cheat["description"] = entry->description;
+    cheat["enabled"] = entry->enabled;
+    cheat["valid"] = gui_cheats_is_valid(entry->code);
+    return cheat;
+}
+
+json DebugAdapter::ListCheats()
+{
+    json result;
+    json cheats = json::array();
+    int count = gui_cheats_get_count();
+
+    for (int i = 0; i < count; i++)
+        cheats.push_back(cheat_to_json(i, gui_cheats_get(i)));
+
+    result["count"] = count;
+    result["max"] = GUI_CHEATS_MAX;
+    result["cheats"] = cheats;
+
+    return result;
+}
+
+json DebugAdapter::AddCheat(const std::string& code, const std::string& description)
+{
+    json result;
+    gui_CheatEntry entry;
+
+    if (!m_core || emu_is_rom_loading() || !m_core->GetCartridge()->IsLoadedROM())
+    {
+        result["error"] = "No media loaded";
+        return result;
+    }
+
+    if ((code.length() >= sizeof(entry.code)) || !gui_cheats_is_valid(code.c_str()))
+    {
+        result["error"] = "Invalid cheat code. Use XXX-XXX, XXX-XXX-XXX, or XXXXXXXX, join codes with +";
+        return result;
+    }
+
+    int index = gui_cheats_add(code.c_str(), description.c_str());
+
+    if (index < 0)
+    {
+        result["error"] = "Maximum number of cheats reached";
+        return result;
+    }
+
+    result = cheat_to_json(index, gui_cheats_get(index));
+    result["success"] = true;
+
+    return result;
+}
+
+json DebugAdapter::RemoveCheat(int index)
+{
+    json result;
+
+    if (!gui_cheats_remove(index))
+    {
+        result["error"] = "Invalid cheat index";
+        return result;
+    }
+
+    result["success"] = true;
+    result["count"] = gui_cheats_get_count();
+
     return result;
 }

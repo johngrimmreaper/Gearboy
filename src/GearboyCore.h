@@ -22,7 +22,14 @@
 
 #include "definitions.h"
 #include "Cartridge.h"
+#include "BarcodeBoy.h"
 #include "link_cable.h"
+#include "Memory.h"
+#include "Processor.h"
+#include "Video.h"
+#include "Audio.h"
+#include "Input.h"
+#include "MBC3MemoryRule.h"
 
 class Memory;
 class Processor;
@@ -48,9 +55,19 @@ class WisdomTreeMemoryRule;
 class M161MemoryRule;
 class SachenMMC1MemoryRule;
 class SachenMMC2MemoryRule;
+class RocketMemoryRule;
 class FlashcartMemoryRule;
+class BHGOSMemoryRule;
+class LiChengMemoryRule;
+class NTNewMemoryRule;
+class GGB81MemoryRule;
+class HitekMemoryRule;
+class VF001MemoryRule;
+class SintaxMemoryRule;
+class NTOldMemoryRule;
 class MemoryRule;
 class TraceLogger;
+class Profiler;
 class SGB;
 
 class GearboyCore
@@ -64,25 +81,26 @@ public:
         bool stop_on_irq;
     };
 
-    typedef GB_Debug_Run GS_Debug_Run;
-
 public:
     GearboyCore();
     ~GearboyCore();
     void Init(GB_Color_Format pixelFormat = GB_PIXEL_RGB565);
+    INLINE bool RunCycle(u16* frame_buffer, unsigned int& clock_cycles, u8 ticks = 1);
+    void EndFrame(s16* sample_buffer, int* sample_count);
+    void SaveLinkCableState(std::ostream& stream);
+    void LoadLinkCableState(std::istream& stream);
     bool RunToVBlank(u16* pFrameBuffer, s16* pSampleBuffer, int* pSampleCount, bool bDMGbuffer = false, GB_Debug_Run* debug = NULL, bool render = true);
     bool LoadROM(const char* szFilePath, bool forceDMG,
         Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported,
         bool forceGBA = false, bool softpatching = false);
     bool LoadROMFromBuffer(const u8* buffer, int size, bool forceDMG, Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported, bool forceGBA = false);
     bool GetRuntimeInfo(GB_RuntimeInfo& runtime_info);
-    void KeyPressed(Gameboy_Keys key);
-    void KeyReleased(Gameboy_Keys key);
+    void KeyPressed(Gameboy_Keys key, int player = 0);
+    void KeyReleased(Gameboy_Keys key, int player = 0);
     void Pause(bool paused);
     bool IsPaused();
     void ResetROM(bool forceDMG, Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported, bool forceGBA = false);
     void ResetROMPreservingRAM(bool forceDMG, Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported, bool forceGBA = false);
-    void ResetSound();
     void SetSoundSampleRate(int rate);
     void SetSoundMute(bool mute);
     void SetSoundVolume(float volume);
@@ -94,11 +112,9 @@ public:
     void LoadRam();
     void LoadRam(const char* szPath, bool fullPath = false);
     void SaveState(int index);
-    void SaveState(const char* szPath, int index);
     bool SaveState(const char* path, int index, bool screenshot);
     bool SaveState(u8* buffer, size_t& size, bool screenshot = false);
     void LoadState(int index);
-    void LoadState(const char* szPath, int index);
     bool LoadState(const char* path, int index, bool unused);
     bool LoadState(const u8* buffer, size_t size);
     bool GetSaveStateHeader(int index, const char* path, GB_SaveState_Header* header, bool* out_sgb = NULL);
@@ -107,20 +123,22 @@ public:
     void SetFrameBuffer(u8* frame_buffer);
     void SetCheat(const char* szCheat);
     void ClearCheats();
-    void SetRamModificationCallback(RamChangedCallback callback);
     bool IsCGB();
     bool IsGBA();
     bool IsSGB();
     void SetSGBEnabled(bool enabled);
+    void SetSGBAllGames(bool enabled);
     void SetSGBBorder(bool enabled);
     Memory* GetMemory();
     Cartridge* GetCartridge();
+    Cartridge::CartridgeTypes GetMapperType();
     Processor* GetProcessor();
     Audio* GetAudio();
     Video* GetVideo();
     Input* GetInput();
     SGB* GetSGB();
     TraceLogger* GetTraceLogger();
+    Profiler* GetProfiler();
     u64 GetMasterClockCycles();
     u64 GetLinkCableCycle() const;
     void SetLinkCableCallbacks(GB_LinkCableStateCallback state_callback, GB_LinkCableStartCallback start_callback,
@@ -129,6 +147,10 @@ public:
     bool IsLinkCableConnected() const;
     void SynchronizeLinkCable();
     void SetAccelerometer(double x, double y);
+    void SetBarcodeBoyMode(GB_BarcodeBoyMode mode);
+    bool IsBarcodeBoyEnabled() const;
+    GB_BarcodeBoyStatus GetBarcodeBoyStatus() const;
+    GB_BarcodeBoyResult ScanBarcode(const char* barcode);
 
 private:
     void RenderDMGFrame(u16* pFrameBuffer) const;
@@ -139,6 +161,7 @@ private:
     void InitMemoryRules();
     bool AddMemoryRules(Cartridge::CartridgeTypes forceType = Cartridge::CartridgeNotSupported);
     void Reset(bool bCGB, bool bGBA);
+    void ApplySerialDevice(bool link_connected);
     bool SaveState(std::ostream& stream, size_t& size, bool screenshot);
     bool LoadState(std::istream& stream);
     bool LoadStateLegacy(std::istream& stream, size_t size);
@@ -151,6 +174,7 @@ private:
     Audio* m_pAudio;
     Input* m_pInput;
     Cartridge* m_pCartridge;
+    Cartridge::CartridgeTypes m_MapperType;
     SGB* m_pSGB;
     CommonMemoryRule* m_pCommonMemoryRule;
     IORegistersMemoryRule* m_pIORegistersMemoryRule;
@@ -171,7 +195,16 @@ private:
     M161MemoryRule* m_pM161MemoryRule;
     SachenMMC1MemoryRule* m_pSachenMMC1MemoryRule;
     SachenMMC2MemoryRule* m_pSachenMMC2MemoryRule;
+    RocketMemoryRule* m_pRocketMemoryRule;
     FlashcartMemoryRule* m_pFlashcartMemoryRule;
+    BHGOSMemoryRule* m_pBHGOSMemoryRule;
+    LiChengMemoryRule* m_pLiChengMemoryRule;
+    NTNewMemoryRule* m_pNTNewMemoryRule;
+    GGB81MemoryRule* m_pGGB81MemoryRule;
+    HitekMemoryRule* m_pHitekMemoryRule;
+    VF001MemoryRule* m_pVF001MemoryRule;
+    SintaxMemoryRule* m_pSintaxMemoryRule;
+    NTOldMemoryRule* m_pNTOldMemoryRule;
     bool m_bCGB;
     bool m_bGBA;
     bool m_bSGB;
@@ -179,17 +212,46 @@ private:
     u16 m_DMGPalette[4];
     bool m_bForceDMG;
     bool m_bSGBEnabled;
+    bool m_bSGBAllGames;
     bool m_bSGBBorder;
     u16* m_pSGBFrameBuffer;
     int m_iRTCUpdateCount;
-    RamChangedCallback m_pRamChangedCallback;
     GB_Color_Format m_pixelFormat;
     bool m_bColorCorrectionEnabled;
     u16 m_ColorCorrectionLUT[65536];
     u8* m_pSaveStateFrameBuffer;
     TraceLogger* m_trace_logger;
+    Profiler* m_profiler;
     u64 m_master_clock_cycles;
     u64 m_link_cable_cycles;
+    BarcodeBoy* m_pBarcodeBoy;
+    GB_BarcodeBoyMode m_BarcodeBoyMode;
+    GB_LinkCableCallbacks m_LinkCableCallbacks;
 };
+
+INLINE bool GearboyCore::RunCycle(u16* frame_buffer, unsigned int& clocks, u8 ticks)
+{
+    clocks = m_pProcessor->RunFor(ticks);
+
+    unsigned int cpu_clocks = clocks;
+    m_master_clock_cycles += clocks;
+    m_link_cable_cycles += clocks;
+
+    m_pProcessor->UpdateTimers(clocks);
+    m_pProcessor->UpdateSerial(clocks, m_link_cable_cycles);
+
+    bool vblank = m_pVideo->Tick(clocks, frame_buffer, m_pixelFormat);
+
+    m_master_clock_cycles += clocks - cpu_clocks;
+    m_link_cable_cycles += clocks - cpu_clocks;
+
+    m_pAudio->Tick(clocks);
+    m_pInput->Tick(clocks);
+    m_pMBC3MemoryRule->Tick(clocks);
+
+    SynchronizeLinkCable();
+
+    return vblank;
+}
 
 #endif /* CORE_H */

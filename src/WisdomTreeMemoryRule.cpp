@@ -24,10 +24,7 @@
 #include "Input.h"
 #include "Cartridge.h"
 
-WisdomTreeMemoryRule::WisdomTreeMemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+WisdomTreeMemoryRule::WisdomTreeMemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     Reset(false);
 }
@@ -139,7 +136,7 @@ void WisdomTreeMemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentROMAddress), sizeof(m_CurrentROMAddress));
 }
 
-void WisdomTreeMemoryRule::LoadState(std::istream& stream)
+void WisdomTreeMemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

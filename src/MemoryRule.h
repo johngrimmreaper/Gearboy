@@ -26,20 +26,16 @@
 #include <vector>
 
 class Memory;
-class Video;
-class Processor;
-class Input;
 class Cartridge;
-class Audio;
 
 class MemoryRule
 {
 public:
-    MemoryRule(Processor* pProcessor, Memory* pMemory, Video* pVideo,
-            Input* pInput, Cartridge* pCartridge, Audio* pAudio);
+    MemoryRule(Memory* pMemory, Cartridge* pCartridge);
     void SetTraceLogger(TraceLogger* pTraceLogger);
     virtual ~MemoryRule();
     virtual u8 PerformRead(u16 address) = 0;
+    virtual u8 DebugRead(u16 address);
     virtual void PerformWrite(u16 address, u8 value) = 0;
     virtual bool MapsROMDirectly();
     virtual u8 GetMapperType();
@@ -49,7 +45,6 @@ public:
     virtual void Reset(bool bCGB) = 0;
     virtual void SaveRam(std::ostream &file);
     virtual bool LoadRam(std::istream &file, s32 fileSize);
-    virtual void SetRamChangedCallback(RamChangedCallback callback);
     virtual size_t GetRamSize();
     virtual size_t GetRTCSize();
     virtual u8* GetRamBanks();
@@ -65,21 +60,16 @@ public:
     virtual u32 GetPhysicalROMAddress(u16 address, u16 bank);
     virtual u8* GetRTCMemory();
     virtual void SaveState(std::ostream& stream);
-    virtual void LoadState(std::istream& stream);
+    virtual void LoadState(std::istream& stream, u32 version = GB_SAVESTATE_VERSION);
 
 protected:
     INLINE void TraceMapperEvent(u16 address, u8 value, u8 event = 0xFF);
     INLINE bool IsTraceMapperEventEnabled(u8 event) const;
     NO_INLINE void LogTraceMapperEvent(u16 address, u8 value, u8 event, u8 flags, bool flags_valid);
 
-    Processor* m_pProcessor;
     Memory* m_pMemory;
-    Video* m_pVideo;
-    Input* m_pInput;
     Cartridge* m_pCartridge;
-    Audio* m_pAudio;
     bool m_bCGB;
-    RamChangedCallback m_pRamChangedCallback;
     TraceLogger* m_pTraceLogger;
 };
 

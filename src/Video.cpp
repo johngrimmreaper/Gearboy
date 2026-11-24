@@ -50,6 +50,8 @@ Video::Video(Memory* pMemory, Processor* pProcessor)
     InitPointer(m_pColorCorrectionLUT);
     m_bColorCorrectionEnabled = false;
     m_CGBWhiteColor = 0xFFFF;
+    m_bFrameDisplayEnabled = true;
+    m_bFrameColorCorrected = false;
     m_bScanLineTransfered = false;
     m_iHideFrames = 0;
     m_IRQ48Signal = 0;
@@ -89,6 +91,75 @@ void Video::LogTraceEvent(u8 event, u8 value)
 #else
     UNUSED(event);
     UNUSED(value);
+#endif
+}
+
+void Video::LogSpriteBudget(int line, int sprite_height)
+{
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    bool trace_budget = m_pTraceLogger->IsEventEnabled(TRACE_LCD, TRACE_LCD_SPRITE_BUDGET);
+    bool trace_limit = m_pTraceLogger->IsEventEnabled(TRACE_LCD, TRACE_LCD_SPRITE_LIMIT);
+
+    if (!trace_budget && !trace_limit)
+        return;
+
+    int requested = 0;
+
+    for (int sprite = 0; sprite < 40; sprite++)
+    {
+        int sprite_y = m_pMemory->Retrieve(0xFE00 + (sprite << 2)) - 16;
+
+        if ((sprite_y <= line) && ((sprite_y + sprite_height) > line))
+            requested++;
+    }
+
+    bool limit = requested > 10;
+
+    if (!trace_budget && !limit)
+        return;
+
+    GB_Trace_Entry e = {};
+    e.type = TRACE_LCD;
+    e.lcd.line = (u16)line;
+    e.lcd.mode = (u8)m_iStatusMode;
+    e.lcd.value = (u16)requested;
+    e.lcd.value2 = (u16)(m_bNoSpriteLimit ? requested : MIN(requested, 10));
+
+    if (trace_budget)
+    {
+        e.lcd.event = TRACE_LCD_SPRITE_BUDGET;
+        m_pTraceLogger->TraceLog(e);
+    }
+
+    if (trace_limit && limit)
+    {
+        e.lcd.event = TRACE_LCD_SPRITE_LIMIT;
+        m_pTraceLogger->TraceLog(e);
+    }
+#else
+    UNUSED(line);
+    UNUSED(sprite_height);
+#endif
+}
+
+void Video::LogMissedVBlank()
+{
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+    u32 misses = m_pProcessor->UpdateVBlankWatch();
+
+    if (misses == 0)
+        return;
+
+    GB_Trace_Entry e = {};
+    e.type = TRACE_LCD;
+    e.lcd.event = TRACE_LCD_MISSED_VBLANK;
+    e.lcd.address = m_pProcessor->GetVBlankWatchAddress();
+    e.lcd.raw = (m_pProcessor->GetVBlankWatchAccess(true) ? 0x01 : 0x00) |
+        (m_pProcessor->GetVBlankWatchAccess(false) ? 0x02 : 0x00);
+    e.lcd.value = (u16)MIN(misses, 0xFFFFU);
+    e.lcd.line = (u16)m_iStatusModeLYCounter;
+    e.lcd.mode = (u8)m_iStatusMode;
+    m_pTraceLogger->TraceLog(e);
 #endif
 }
 
@@ -135,11 +206,13 @@ void Video::Reset(bool bCGB)
     m_bCGB = bCGB;
     m_iHideFrames = 0;
     m_IRQ48Signal = 0;
+    LatchFrameInfo(true);
 }
 
 void Video::ResetToBootromState()
 {
     m_bScreenEnabled = false;
+    LatchFrameInfo(false);
     m_iStatusMode = 0;
     m_iStatusModeCounter = 0;
     m_iStatusModeCounterAux = 0;
@@ -734,6 +807,8 @@ void Video::RenderSprites(int line)
 
     int sprite_height = IsSetBit(lcdc, 2) ? 16 : 8;
     int line_width = (line * GAMEBOY_WIDTH);
+
+    TraceSpriteBudget(line, sprite_height);
 
     if (unlikely(m_bNoSpriteLimit))
     {

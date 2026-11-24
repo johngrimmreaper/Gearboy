@@ -21,9 +21,8 @@
 #include "Memory.h"
 #include "Processor.h"
 
-Input::Input(Memory* pMemory, Processor* pProcessor)
+Input::Input(Processor* pProcessor)
 {
-    m_pMemory = pMemory;
     m_pProcessor = pProcessor;
     memset(m_JoypadState, 0xFF, sizeof(m_JoypadState));
     m_P1 = 0xFF;
@@ -44,31 +43,19 @@ void Input::Reset()
     m_iCurrentPlayer = 0;
 }
 
-void Input::KeyPressed(Gameboy_Keys key)
+void Input::KeyPressed(Gameboy_Keys key, int player)
 {
-    m_JoypadState[0] &= ~key;
+    m_JoypadState[player & 3] &= ~key;
 }
 
-void Input::KeyReleased(Gameboy_Keys key)
+void Input::KeyReleased(Gameboy_Keys key, int player)
 {
-    m_JoypadState[0] |= key;
+    m_JoypadState[player & 3] |= key;
 }
 
 bool Input::IsKeyPressed(Gameboy_Keys key) const
 {
     return !(m_JoypadState[0] & key);
-}
-
-void Input::KeyPressed(Gameboy_Keys key, int player)
-{
-    if (player >= 0 && player < 4)
-        m_JoypadState[player] &= ~key;
-}
-
-void Input::KeyReleased(Gameboy_Keys key, int player)
-{
-    if (player >= 0 && player < 4)
-        m_JoypadState[player] |= key;
 }
 
 void Input::SetCurrentPlayer(int player)
@@ -126,6 +113,8 @@ void Input::SaveState(std::ostream& stream)
 void Input::LoadState(std::istream& stream, u32 version)
 {
     using namespace std;
+
+    m_iCurrentPlayer = 0;
 
     if (version < 102)
     {

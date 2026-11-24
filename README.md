@@ -30,11 +30,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>Desktop x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-windows-x64.zip">Gearboy-3.8.15-desktop-windows-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-windows-x64.zip">Gearboy-3.8.22-desktop-windows-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-windows-arm64.zip">Gearboy-3.8.15-desktop-windows-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-windows-arm64.zip">Gearboy-3.8.22-desktop-windows-arm64.zip</a></td>
     </tr>
     <tr>
       <td rowspan="3"><strong>macOS</strong></td>
@@ -43,14 +43,14 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Apple Silicon</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-macos-arm64.zip">Gearboy-3.8.15-desktop-macos-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-macos-arm64.zip">Gearboy-3.8.22-desktop-macos-arm64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Intel</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-macos-intel.zip">Gearboy-3.8.15-desktop-macos-intel.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-macos-intel.zip">Gearboy-3.8.22-desktop-macos-intel.zip</a></td>
     </tr>
     <tr>
-      <td rowspan="5"><strong>Linux</strong></td>
+      <td rowspan="6"><strong>Linux</strong></td>
       <td>Ubuntu PPA</td>
       <td><a href="https://github.com/drhelius/ppa-geardome">drhelius/ppa-geardome</a></td>
     </tr>
@@ -59,16 +59,20 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
       <td><a href="https://github.com/drhelius/rpm-geardome">drhelius/rpm-geardome</a></td>
     </tr>
     <tr>
-      <td>Desktop Ubuntu 24.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu24.04-x64.zip">Gearboy-3.8.15-desktop-ubuntu24.04-x64.zip</a></td>
+      <td>Desktop Ubuntu 26.04 x64</td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-ubuntu26.04-x64.zip">Gearboy-3.8.22-desktop-ubuntu26.04-x64.zip</a></td>
     </tr>
     <tr>
-      <td>Desktop Ubuntu 22.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu22.04-x64.zip">Gearboy-3.8.15-desktop-ubuntu22.04-x64.zip</a></td>
+      <td>Desktop Ubuntu 26.04 ARM64</td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-ubuntu26.04-arm64.zip">Gearboy-3.8.22-desktop-ubuntu26.04-arm64.zip</a></td>
+    </tr>
+    <tr>
+      <td>Desktop Ubuntu 24.04 x64</td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-ubuntu24.04-x64.zip">Gearboy-3.8.22-desktop-ubuntu24.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.15/Gearboy-3.8.15-desktop-ubuntu24.04-arm64.zip">Gearboy-3.8.15-desktop-ubuntu24.04-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearboy/releases/download/3.8.22/Gearboy-3.8.22-desktop-ubuntu24.04-arm64.zip">Gearboy-3.8.22-desktop-ubuntu24.04-arm64.zip</a></td>
     </tr>
     <tr>
       <td><strong>MCPB</strong></td>
@@ -95,10 +99,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 
 ## Features
 
-- Supported cartridges: ROM, ROM + RAM, MBC1, MBC2, MBC3, MBC5, MBC6, MBC7, HuC-1, HuC-3, MMM01, Pocket Camera, TAMA5, MBC1M, Wisdom Tree, M161, Sachen MMC1, Sachen MMC2 and PKJD.
+- Supported cartridges: ROM, ROM + RAM, MBC1, MBC2, MBC3, MBC5, MBC6, MBC7, HuC-1, HuC-3, MMM01, Pocket Camera, TAMA5, MBC1M, Wisdom Tree, M161, Sachen MMC1, Sachen MMC2, PKJD, Bung/EMS, Poke 2-in-1, Rocket Games, BHGOS, Li Cheng, NT newer, GGB81, Hitek, VF001, VF001 (SL), Sintax, NT old 1 and NT old 2.
 - Game Boy Color support.
 - Super Game Boy support.
-- Local two-instance Game Boy link cable support on desktop platforms.
+- Local two-instance Game Boy link cable support on desktop platforms and libretro core.
+- Barcode Boy
 - LCD screen ghosting effect as seen in the original Game Boy.
 - LCD dot matrix effects. 
 - Battery powered RAM save support.
@@ -106,12 +111,12 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 - Run-ahead support to reduce input latency.
 - Compressed ROM support (ZIP).
 - Bootrom (BIOS) support.
-- *Game Genie* and *GameShark* cheat support.
+- *Game Genie* and *GameShark* cheat support, with RetroArch `.cht` import.
 - VGM recorder.
 - Supported platforms (standalone): Windows, Linux, BSD and macOS.
 - Supported platforms (libretro): Windows, Linux, macOS, Raspberry Pi, Android, iOS, tvOS, webOS, PlayStation Vita, PlayStation 3, Nintendo 3DS, Nintendo GameCube, Nintendo Wii, Nintendo WiiU, Nintendo Switch, Emscripten, Classic Mini systems (NES, SNES, C64, ...), OpenDingux, RetroFW and QNX.
 - Full debugger with just-in-time disassembler, CPU breakpoints, memory access breakpoints, code navigation (goto address, JP JR and CALL double clicking), debug symbols, automatic labels, memory editor, trace logger, IO inspector and VRAM viewer including tiles, sprites, backgrounds and palettes.
-- MCP server for AI-assisted debugging with GitHub Copilot, Claude, Codex and similar, exposing tools for execution control, memory inspection, hardware status, rewind and more.
+- MCP server for AI-assisted debugging with Claude Code, Codex and similar, exposing tools for execution control, memory inspection, hardware status, rewind and more.
 - Windows, Linux and macOS *Portable Mode*.
 - [Programmable Shader Chain](platforms/shared/desktop/shaders/README.md).
 - ROM loading from the command line by adding the ROM path as an argument.
@@ -144,6 +149,7 @@ Arguments:
 Options:
   -f, --fullscreen            Start in fullscreen mode
   -w, --windowed              Start in windowed mode with menu visible
+      --load-state SLOT       Load save state slot 1-5, or a state file, once the media is loaded
       --mcp-stdio             Auto-start MCP server with stdio transport
       --mcp-http              Auto-start MCP server with HTTP transport
       --mcp-router            Enable compact MCP tool routing
@@ -158,7 +164,7 @@ Options:
 
 ### MCP Server
 
-Gearboy includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like GitHub Copilot, Claude, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, and more. STDIO and HTTP transports are supported, with STDIO preferred.
+Gearboy includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like Claude Code, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, and more. STDIO and HTTP transports are supported, with STDIO preferred.
 
 For complete setup instructions and tool documentation, see [MCP_README.md](MCP_README.md).
 
@@ -196,15 +202,15 @@ make dist
 
 - Ubuntu / Debian / Raspberry Pi (Raspbian):
 
-If you are using Ubuntu 25.04 or later, you can install SDL3 directly. Use the following commands to build:
+If you are using Ubuntu 26.04, you can install SDL3 directly. Use the following commands to build:
 
 ``` shell
-sudo apt install build-essential libsdl3-dev
+sudo apt install build-essential pkg-config libsdl3-dev libgl-dev
 cd platforms/linux
 make
 ```
 
-For older Ubuntu versions (22.04, 24.04), you need to build SDL3 from source first. Use the following commands to build both SDL3 and Gearboy:
+For Ubuntu 24.04, you need to build SDL3 from source first. Use the following commands to build both SDL3 and Gearboy:
 
 ``` shell
 sudo apt install build-essential cmake git curl jq pkg-config \

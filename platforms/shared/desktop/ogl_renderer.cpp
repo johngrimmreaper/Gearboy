@@ -31,19 +31,28 @@
 #include "emu.h"
 #include "config.h"
 #include "gearboy.h"
+#include "rewind.h"
+#include "video_recorder.h"
 
 #define OGL_RENDERER_IMPORT
 #include "ogl_renderer.h"
 #include "ogl_shader_chain.h"
 #include "ogl_shader_program.h"
 
-static uint32_t system_texture;
-static uint32_t frame_buffer_object;
 static ShaderPresetSourcePalette applied_shader_source_palette = ShaderPresetSourcePalette_Default;
 static GB_RuntimeInfo current_runtime;
+static u32 system_frame_buffer[SGB_SCREEN_WIDTH * SGB_SCREEN_HEIGHT];
 static OglRendererScreenGeometry screen_geometry;
 static int savestates_texture_slot = -1;
 static u32 savestates_texture_generation = 0;
+static u8* recording_buffer = NULL;
+static int recording_buffer_size = 0;
+static bool shader_output_valid = false;
+static int shader_output_width = 0;
+static int shader_output_height = 0;
+static int shader_source_width = 0;
+static int shader_source_height = 0;
+static u64 shader_video_frame_counter = 0;
 
 static uint32_t quad_shader_program = 0;
 static uint32_t quad_vao = 0;
@@ -53,18 +62,17 @@ static int quad_uniform_color = -1;
 static int quad_uniform_tex_scale = -1;
 
 static void init_ogl_gui(void);
-static bool init_ogl_emu(void);
+static void init_ogl_emu(void);
 static void init_ogl_debug(void);
 static void init_ogl_savestates(void);
 static bool init_shaders(void);
 static void render_gui(void);
 static bool should_use_internal_shader_chain(void);
-static void render_internal_shader_chain(void);
-static void render_external_shader_chain(void);
-static void render_internal_shader_chain_feedback(void);
-static void render_emu_normal(void);
-static void bind_texture_unit(int unit, uint32_t texture, uint32_t fallback_texture);
-static void render_quad(uint32_t program, uint32_t texture, int viewport_width, int viewport_height, float tex_h, float tex_v, float red, float green, float blue, float alpha);
+static bool render_shader_output(bool new_frame);
+static bool render_internal_shader_chain(int advanced_frames);
+static bool render_external_shader_chain(void);
+static void fill_shader_frame_info(OglShaderChainFrameInfo* info);
+static void record_video_frame(bool shader_rendered);
 static void render_quad_preset(int pass_index, uint32_t program, uint32_t texture, int input_width, int input_height, int viewport_width, int viewport_height);
 static void apply_shader_source_palette(void);
 static void apply_configured_dmg_palette(void);
@@ -76,10 +84,10 @@ static void load_configured_shader_preset(void);
 static void apply_shader_parameter_config(void);
 static bool get_active_shader_preset_file(char* preset_file, size_t preset_file_size);
 static float get_original_aspect(void);
+static float get_framebuffer_scale(void);
 static void configure_texture_2d(bool filter_linear);
 static void create_texture_2d(uint32_t* texture, int width, int height, int internal_format, uint32_t format, uint32_t type, const void* pixels, bool filter_linear);
 static void resize_texture_2d(uint32_t texture, int width, int height, int internal_format, uint32_t format, uint32_t type, const void* pixels, bool filter_linear);
-static bool check_framebuffer_complete(const char* name);
 
 bool ogl_renderer_init(void)
 {
@@ -105,8 +113,7 @@ bool ogl_renderer_init(void)
 
     init_ogl_gui();
 
-    if (!init_ogl_emu())
-        return false;
+    init_ogl_emu();
 
     if (!ogl_shader_chain_init("internal shader-chain framebuffer"))
         return false;
@@ -121,9 +128,7 @@ bool ogl_renderer_init(void)
 
 void ogl_renderer_destroy(void)
 {
-    glDeleteFramebuffers(1, &frame_buffer_object); 
     glDeleteTextures(1, &ogl_renderer_emu_texture);
-    glDeleteTextures(1, &system_texture);
     ogl_shader_chain_destroy();
 
     glDeleteTextures(1, &ogl_renderer_emu_debug_vram_background);
@@ -142,6 +147,10 @@ void ogl_renderer_destroy(void)
     quad_vao = 0;
     quad_vbo = 0;
 
+    SafeDeleteArray(recording_buffer);
+    recording_buffer_size = 0;
+    shader_output_valid = false;
+
     ImGui_ImplOpenGL3_Shutdown();
 }
 
@@ -150,7 +159,7 @@ void ogl_renderer_begin_render(void)
     ImGui_ImplOpenGL3_NewFrame();
 }
 
-void ogl_renderer_render(void)
+void ogl_renderer_render(bool new_frame)
 {
     update_current_runtime();
     apply_shader_source_palette();
@@ -163,11 +172,17 @@ void ogl_renderer_render(void)
     update_savestates_texture();
 
     bool use_internal_shader_chain = should_use_internal_shader_chain();
+    bool shader_rendered = false;
 
     if (use_internal_shader_chain)
-        render_internal_shader_chain();
+        shader_rendered = render_shader_output(new_frame);
     else
-        render_emu_normal();
+    {
+        shader_output_valid = false;
+        update_system_texture();
+    }
+
+    record_video_frame(shader_rendered);
 
     ImVec4 clear_color = ImVec4(config_video.background_color[config_emulator.theme][0], config_video.background_color[config_emulator.theme][1], config_video.background_color[config_emulator.theme][2], 1.00f);
 
@@ -175,6 +190,7 @@ void ogl_renderer_render(void)
     int fb_width = (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x);
     int fb_height = (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y);
 
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDisable(GL_FRAMEBUFFER_SRGB);
 
     glViewport(0, 0, fb_width, fb_height);
@@ -243,6 +259,16 @@ void ogl_renderer_get_screen_uv(float* u, float* v)
         *v = (float)runtime.screen_height / (float)SYSTEM_TEXTURE_HEIGHT;
 }
 
+bool ogl_renderer_get_output_size(int* width, int* height)
+{
+    if (!should_use_internal_shader_chain())
+        return false;
+
+    *width = screen_geometry.physical_width;
+    *height = screen_geometry.physical_height;
+    return true;
+}
+
 bool ogl_renderer_load_shader_preset(const char* path)
 {
     char resolved_path[SHADER_PRESET_MAX_PATH];
@@ -256,6 +282,7 @@ bool ogl_renderer_load_shader_preset(const char* path)
     if (!ogl_shader_chain_load_preset(resolved_path))
         return false;
 
+    shader_output_valid = false;
     config_video.shader_mode = config_ShaderMode_External;
     apply_shader_parameter_config();
 
@@ -270,6 +297,7 @@ bool ogl_renderer_load_shader_preset(const char* path)
 void ogl_renderer_unload_shader_preset(void)
 {
     ogl_shader_chain_unload_preset();
+    shader_output_valid = false;
     config_video.shader_mode = config_ShaderMode_PixelPerfect;
     config_video.shader_preset_path.clear();
 }
@@ -282,6 +310,9 @@ void ogl_renderer_save_shader_parameter_config(void)
         return;
 
     int count = ogl_shader_chain_get_parameter_count();
+
+    if (ogl_shader_chain_get_variant_count() > 0)
+        config_write_shader_variant(preset_file, ogl_shader_chain_get_variant_name(ogl_shader_chain_get_variant()));
 
     for (int i = 0; i < count; i++)
     {
@@ -302,20 +333,10 @@ static void init_ogl_gui(void)
 #endif
 }
 
-static bool init_ogl_emu(void)
+static void init_ogl_emu(void)
 {
-    glGenFramebuffers(1, &frame_buffer_object);
-    create_texture_2d(&ogl_renderer_emu_texture, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE, NULL, false);
-    create_texture_2d(&system_texture, SYSTEM_TEXTURE_WIDTH, SYSTEM_TEXTURE_HEIGHT, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*) emu_frame_buffer, false);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer_object);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ogl_renderer_emu_texture, 0);
-
-    bool complete = check_framebuffer_complete("emulator framebuffer");
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    return complete;
+    create_texture_2d(&ogl_renderer_emu_texture, SYSTEM_TEXTURE_WIDTH, SYSTEM_TEXTURE_HEIGHT,
+        GL_RGB8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL, false);
 }
 
 static void init_ogl_debug(void)
@@ -353,9 +374,41 @@ static bool should_use_internal_shader_chain(void)
             screen_geometry.physical_height > 0;
 }
 
-static void render_internal_shader_chain(void)
+static bool render_shader_output(bool new_frame)
+{
+    bool same_size = (shader_output_width == screen_geometry.physical_width) &&
+        (shader_output_height == screen_geometry.physical_height) &&
+        (shader_source_width == current_runtime.screen_width) &&
+        (shader_source_height == current_runtime.screen_height);
+
+    if (!new_frame && shader_output_valid && same_size)
+        return true;
+
+    int advanced_frames = 0;
+
+    if (emu_video_frame_counter != shader_video_frame_counter)
+    {
+        u64 delta = emu_video_frame_counter - shader_video_frame_counter;
+        advanced_frames = (int)MIN(delta, (u64)0x10000);
+        shader_video_frame_counter = emu_video_frame_counter;
+    }
+
+    shader_output_valid = render_internal_shader_chain(advanced_frames);
+    shader_output_width = screen_geometry.physical_width;
+    shader_output_height = screen_geometry.physical_height;
+    shader_source_width = current_runtime.screen_width;
+    shader_source_height = current_runtime.screen_height;
+
+    return shader_output_valid;
+}
+
+static bool render_internal_shader_chain(int advanced_frames)
 {
     bool filter_linear = ogl_shader_chain_get_preset_filter_linear();
+
+    OglShaderChainFrameInfo frame_info;
+    fill_shader_frame_info(&frame_info);
+    ogl_shader_chain_begin_frame(&frame_info, advanced_frames);
 
     OglShaderChainSourceTexture source_texture;
     source_texture.width = current_runtime.screen_width;
@@ -365,27 +418,42 @@ static void render_internal_shader_chain(void)
 
     if (!ogl_shader_chain_update_source_texture(&source_texture))
     {
-        render_emu_normal();
-        return;
+        update_system_texture();
+        return false;
     }
 
-    render_external_shader_chain();
+    return render_external_shader_chain();
 }
 
-static void render_external_shader_chain(void)
+static void fill_shader_frame_info(OglShaderChainFrameInfo* info)
+{
+    ogl_shader_chain_reset_frame_info(info, current_runtime.screen_width, current_runtime.screen_height);
+
+    info->frame_direction = rewind_is_active() ? -1 : 1;
+    info->original_fps = (float)current_runtime.fps;
+    info->system_type = current_runtime.system_type;
+    info->display_enabled = current_runtime.display_enabled ? 1 : 0;
+
+    for (int i = 0; i < 4; i++)
+        info->active_region[i] = (float)current_runtime.active_region[i];
+
+    if (current_runtime.color_correction)
+        info->core_flags |= OglShaderChainCoreFlag_ColorCorrection;
+}
+
+static bool render_external_shader_chain(void)
 {
     glDisable(GL_BLEND);
 
     int pass_count = ogl_shader_chain_get_preset_pass_count();
     if (pass_count <= 0)
-        return;
+        return false;
 
     int original_width = current_runtime.screen_width;
     int original_height = current_runtime.screen_height;
     int input_width = original_width;
     int input_height = original_height;
     uint32_t input_texture = ogl_shader_chain_get_source_texture();
-    bool input_float_framebuffer = false;
 
     for (int i = 0; i < pass_count; i++)
     {
@@ -413,7 +481,7 @@ static void render_external_shader_chain(void)
         {
             framebuffer_texture.filter_linear = false;
             if (!ogl_shader_chain_resize_pass_texture(&framebuffer_texture))
-                return;
+                return false;
             output_fbo = ogl_shader_chain_get_pass_framebuffer();
             output_texture = ogl_shader_chain_get_pass_texture();
         }
@@ -421,7 +489,7 @@ static void render_external_shader_chain(void)
         {
             framebuffer_texture.filter_linear = ogl_shader_chain_get_preset_pass_filter_linear(i + 1);
             if (!ogl_shader_chain_resize_intermediate_texture(i, &framebuffer_texture))
-                return;
+                return false;
             output_fbo = ogl_shader_chain_get_intermediate_framebuffer(i);
             output_texture = ogl_shader_chain_get_intermediate_texture(i);
         }
@@ -429,62 +497,67 @@ static void render_external_shader_chain(void)
         glBindFramebuffer(GL_FRAMEBUFFER, output_fbo);
         render_quad_preset(i, ogl_shader_chain_get_preset_pass_program(i), input_texture, input_width, input_height, output_width, output_height);
 
-        if (ogl_shader_chain_get_preset_pass_uses_history(i))
-        {
-            ogl_shader_chain_store_pass_history(i, input_texture, input_width, input_height,
-                ogl_shader_chain_get_preset_pass_filter_linear(i), input_float_framebuffer);
-        }
-
         input_texture = output_texture;
         input_width = output_width;
         input_height = output_height;
-        input_float_framebuffer = framebuffer_texture.float_framebuffer;
     }
 
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    if (ogl_shader_chain_preset_uses_feedback())
-        render_internal_shader_chain_feedback();
+    return true;
 }
 
-static void render_internal_shader_chain_feedback(void)
+static void record_video_frame(bool shader_rendered)
 {
-    glBindFramebuffer(GL_FRAMEBUFFER, ogl_shader_chain_get_feedback_framebuffer());
-    glDisable(GL_BLEND);
+    if (!emu_video_recording_frame_pending)
+        return;
 
-    render_quad(quad_shader_program, ogl_shader_chain_get_pass_texture(),
-            ogl_shader_chain_get_pass_width(), ogl_shader_chain_get_pass_height(),
-            1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f, 1.0f);
+    emu_video_recording_frame_pending = false;
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
+    if (!shader_rendered)
+    {
+        video_recorder_add_video((const u8*)emu_frame_buffer, current_runtime.screen_width, current_runtime.screen_height, 3);
+        return;
+    }
 
-static void render_emu_normal(void)
-{
-    float tex_h = (float)current_runtime.screen_width / (float)SYSTEM_TEXTURE_WIDTH;
-    float tex_v = (float)current_runtime.screen_height / (float)SYSTEM_TEXTURE_HEIGHT;
+    int width = ogl_shader_chain_get_pass_width();
+    int height = ogl_shader_chain_get_pass_height();
 
-    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer_object);
+    if (width > 1)
+        width &= ~1;
+    if (height > 1)
+        height &= ~1;
 
-    glDisable(GL_BLEND);
+    int size = width * height * 4;
 
-    update_system_texture();
+    if (size > recording_buffer_size)
+    {
+        SafeDeleteArray(recording_buffer);
+        recording_buffer = new u8[size];
+        recording_buffer_size = size;
+    }
 
-    int viewport_width = current_runtime.screen_width * FRAME_BUFFER_SCALE;
-    int viewport_height = current_runtime.screen_height * FRAME_BUFFER_SCALE;
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, ogl_shader_chain_get_pass_framebuffer());
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, recording_buffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
-    render_quad(quad_shader_program, system_texture, viewport_width, viewport_height, tex_h, tex_v, 1.0f, 1.0f, 1.0f, 1.0f);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    video_recorder_add_video(recording_buffer, width, height, 4);
 }
 
 static void update_system_texture(void)
 {
-    glBindTexture(GL_TEXTURE_2D, system_texture);
+    int count = current_runtime.screen_width * current_runtime.screen_height;
+
+    for (int i = 0; i < count; i++)
+    {
+        const GB_Color& color = emu_frame_buffer[i];
+        system_frame_buffer[i] = 0xFF000000U | ((u32)color.red << 16) | ((u32)color.green << 8) | color.blue;
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ogl_renderer_emu_texture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, current_runtime.screen_width, current_runtime.screen_height,
-            GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*) emu_frame_buffer);
+        GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, system_frame_buffer);
 }
 
 static void update_debug_textures(void)
@@ -538,49 +611,9 @@ static void update_savestates_texture(void)
     }
 }
 
-static void render_quad(uint32_t program, uint32_t texture, int viewport_width, int viewport_height, float tex_h, float tex_v, float red, float green, float blue, float alpha)
-{
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glUseProgram(program);
-    glUniform2f(quad_uniform_tex_scale, tex_h, tex_v);
-    glUniform4f(quad_uniform_color, red, green, blue, alpha);
-
-    glViewport(0, 0, viewport_width, viewport_height);
-
-    glBindVertexArray(quad_vao);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    glBindVertexArray(0);
-    glUseProgram(0);
-
-    glActiveTexture(GL_TEXTURE0);
-}
-
 static void render_quad_preset(int pass_index, uint32_t program, uint32_t texture, int input_width, int input_height, int viewport_width, int viewport_height)
 {
-    uint32_t source_texture = ogl_shader_chain_get_source_texture();
-    uint32_t fallback_texture = source_texture ? source_texture : texture;
-
-    bind_texture_unit(0, texture, fallback_texture);
-    bind_texture_unit(1, source_texture, fallback_texture);
-    bind_texture_unit(2, ogl_shader_chain_get_feedback_texture(), fallback_texture);
-
-    for (int i = 0; i < SHADER_PRESET_MAX_HISTORY_TEXTURES; i++)
-    {
-        if (!ogl_shader_chain_get_preset_pass_uses_history_sampler(pass_index, i))
-            continue;
-
-        bind_texture_unit(3 + i, ogl_shader_chain_get_pass_history_texture(pass_index, i), fallback_texture);
-    }
-
-    for (int i = 0; i < SHADER_PRESET_MAX_PASS_OUTPUT_TEXTURES; i++)
-    {
-        if (!ogl_shader_chain_get_preset_pass_uses_pass_output_sampler(pass_index, i))
-            continue;
-
-        bind_texture_unit(3 + SHADER_PRESET_MAX_HISTORY_TEXTURES + i, (i < pass_index) ? ogl_shader_chain_get_intermediate_texture(i) : 0, fallback_texture);
-    }
+    ogl_shader_chain_bind_preset_textures(pass_index, texture);
 
     glUseProgram(program);
     OglShaderChainUniforms uniforms;
@@ -593,6 +626,7 @@ static void render_quad_preset(int pass_index, uint32_t program, uint32_t textur
     uniforms.viewport_width = screen_geometry.physical_width;
     uniforms.viewport_height = screen_geometry.physical_height;
     uniforms.original_aspect = get_original_aspect();
+    uniforms.framebuffer_scale = get_framebuffer_scale();
     uniforms.background_color[0] = config_video.background_color[config_emulator.theme][0];
     uniforms.background_color[1] = config_video.background_color[config_emulator.theme][1];
     uniforms.background_color[2] = config_video.background_color[config_emulator.theme][2];
@@ -607,12 +641,6 @@ static void render_quad_preset(int pass_index, uint32_t program, uint32_t textur
     glUseProgram(0);
 
     glActiveTexture(GL_TEXTURE0);
-}
-
-static void bind_texture_unit(int unit, uint32_t texture, uint32_t fallback_texture)
-{
-    glActiveTexture(GL_TEXTURE0 + unit);
-    glBindTexture(GL_TEXTURE_2D, texture ? texture : fallback_texture);
 }
 
 static void apply_shader_source_palette(void)
@@ -706,6 +734,14 @@ static void apply_shader_parameter_config(void)
         return;
 
     int parameter_count = ogl_shader_chain_get_parameter_count();
+    std::string variant;
+
+    if (config_read_shader_variant(preset_file, variant))
+    {
+        int index = ogl_shader_chain_find_variant(variant.c_str());
+        if (index >= 0)
+            ogl_shader_chain_set_variant(index);
+    }
 
     for (int i = 0; i < parameter_count; i++)
     {
@@ -735,6 +771,12 @@ static float get_original_aspect(void)
     return (float)current_runtime.screen_width / (float)current_runtime.screen_height;
 }
 
+static float get_framebuffer_scale(void)
+{
+    float scale = roundf(screen_geometry.framebuffer_scale_x);
+    return scale < 1.0f ? 1.0f : scale;
+}
+
 static void configure_texture_2d(bool filter_linear)
 {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -754,17 +796,6 @@ static void resize_texture_2d(uint32_t texture, int width, int height, int inter
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, pixels);
     configure_texture_2d(filter_linear);
-}
-
-static bool check_framebuffer_complete(const char* name)
-{
-    uint32_t status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
-    if (status == GL_FRAMEBUFFER_COMPLETE)
-        return true;
-
-    Error("OpenGL framebuffer incomplete (%s): 0x%04X", name, status);
-    return false;
 }
 
 static bool init_shaders(void)

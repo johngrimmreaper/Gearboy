@@ -26,10 +26,7 @@
 
 const int kMBC1RamBanksSize = 0x8000;
 
-MBC1MemoryRule::MBC1MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+MBC1MemoryRule::MBC1MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     m_pRAMBanks = new u8[kMBC1RamBanksSize];
     Reset(false);
@@ -137,13 +134,7 @@ void MBC1MemoryRule::PerformWrite(u16 address, u8 value)
         {
             if (m_pCartridge->GetRAMSize() > 0)
             {
-                bool previous = m_bRamEnabled;
                 m_bRamEnabled = ((value & 0x0F) == 0x0A);
-
-                if (IsValidPointer(m_pRamChangedCallback) && previous && !m_bRamEnabled)
-                {
-                    (*m_pRamChangedCallback)();
-                }
             }
             if (IsTraceMapperEventEnabled(TRACE_MAPPER_CONTROL))
             {
@@ -204,7 +195,7 @@ void MBC1MemoryRule::SaveRam(std::ostream &file)
     Debug("MBC1MemoryRule save RAM...");
     Debug("MBC1MemoryRule saving %d banks...", m_pCartridge->GetRAMBankCount());
 
-    u32 ramSize = m_pCartridge->GetRAMBankCount() * 0x2000;
+    u32 ramSize = m_iRamBytesSize;
 
     for (u32 i = 0; i < ramSize; i++)
     {
@@ -220,9 +211,11 @@ bool MBC1MemoryRule::LoadRam(std::istream &file, s32 fileSize)
     Debug("MBC1MemoryRule load RAM...");
     Debug("MBC1MemoryRule loading %d banks...", m_pCartridge->GetRAMBankCount());
 
-    s32 ramSize = m_pCartridge->GetRAMBankCount() * 0x2000;
+    s32 ramSize = m_iRamBytesSize;
 
-    if ((fileSize > 0) && (fileSize != ramSize))
+    bool legacySize = (ramSize == 0x800) && (fileSize == 0x2000);
+
+    if ((fileSize > 0) && (fileSize != ramSize) && !legacySize)
     {
         Log("MBC1MemoryRule incorrect size. Expected: %d Found: %d", ramSize, fileSize);
         return false;
@@ -249,7 +242,7 @@ bool MBC1MemoryRule::LoadRam(std::istream &file, s32 fileSize)
 
 size_t MBC1MemoryRule::GetRamSize()
 {
-    return m_pCartridge->GetRAMBankCount() * 0x2000;
+    return m_iRamBytesSize;
 }
 
 u8* MBC1MemoryRule::GetRamBanks()
@@ -310,7 +303,7 @@ void MBC1MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentRAMAddress), sizeof(m_CurrentRAMAddress));
 }
 
-void MBC1MemoryRule::LoadState(std::istream& stream)
+void MBC1MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

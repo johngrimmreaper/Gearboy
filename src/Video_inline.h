@@ -49,6 +49,8 @@ inline bool Video::Tick(unsigned int &clockCycles, u16* pColorFrameBuffer, GB_Co
                         m_iStatusVBlankLine = 0;
                         m_iStatusModeCounterAux = m_iStatusModeCounter;
 
+                        TraceMissedVBlank();
+
                         if (m_pProcessor->CGBSpeed())
                         {
                             m_iPendingVBlankInterruptCycles = 12;
@@ -62,6 +64,7 @@ inline bool Video::Tick(unsigned int &clockCycles, u16* pColorFrameBuffer, GB_Co
                         if (m_iHideFrames > 0)
                         {
                             m_iHideFrames--;
+                            LatchFrameInfo(false);
 
                             if (IsValidPointer(m_pColorFrameBuffer))
                             {
@@ -81,7 +84,10 @@ inline bool Video::Tick(unsigned int &clockCycles, u16* pColorFrameBuffer, GB_Co
                             vblank = true;
                         }
                         else
+                        {
+                            LatchFrameInfo(true);
                             vblank = true;
+                        }
 
                         m_iWindowLine = 0;
                         m_bWindowYTrigger = false;
@@ -240,6 +246,7 @@ inline bool Video::Tick(unsigned int &clockCycles, u16* pColorFrameBuffer, GB_Co
         {
             m_iStatusModeCounter -= 70224;
             m_iHideFrames = 0;
+            LatchFrameInfo(false);
 
             if (IsValidPointer(m_pColorFrameBuffer))
             {

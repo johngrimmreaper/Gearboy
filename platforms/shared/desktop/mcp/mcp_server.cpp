@@ -320,7 +320,7 @@ void McpServer::HandleInitialize(const json& request)
         {"serverInfo", {
             {"name", "gearboy-mcp-server"},
             {"title", GEARBOY_TITLE " MCP Server"},
-            {"description", "Debug/control " GEARBOY_TITLE " Game Boy/Game Boy Color: execution, breakpoints, memory, SM83 CPU, LCD/PPU, APU, SGB, disassembly, symbols, sprites, save states, rewind, input, screenshots."},
+            {"description", "Debug/control " GEARBOY_TITLE " Game Boy/Game Boy Color: execution, breakpoints, memory, SM83 CPU, LCD/PPU, APU, SGB, disassembly, symbols, sprites, save states, rewind, input, screenshots, video recording."},
             {"version", GEARBOY_VERSION}
         }}
     };
@@ -328,7 +328,7 @@ void McpServer::HandleInitialize(const json& request)
     response["result"]["instructions"] =
         "Use this server for Game Boy, Game Boy Color, and Super Game Boy game debugging, reverse "
         "engineering, memory inspection, SM83 tracing, breakpoints, LCD/PPU, APU, sprites, save states, "
-        "rewind, input, and screenshots.";
+        "rewind, input, screenshots, and video recording.";
 
     if (g_mcp_router_enabled)
     {
@@ -708,7 +708,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "get_media_info"},
         {"title", "Get Media Info"},
-        {"description", "Read loaded ROM info: path, title, MBC, ROM/RAM size, CGB/SGB, battery."},
+        {"description", "Read loaded ROM info: path, title, detected cartridge type, active mapper, ROM/RAM size, CGB/SGB, battery."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -807,6 +807,51 @@ json McpServer::BuildToolList()
         {"title", "Get Screenshot"},
         {"description", "Capture current screen/frame/video output as PNG screenshot image."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "start_video_recording"},
+        {"title", "Start Video Recording"},
+        {"description", "Start recording emulated video and audio to an AVI file (MJPEG or uncompressed video, PCM audio). The file is written to disk only; its path is returned. Options given here update the recording settings, same as the GUI menu."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", true}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"file_path", {
+                    {"type", "string"},
+                    {"description", "Absolute destination .avi file path. If omitted, an automatic name is used in the configured video recordings directory."}
+                }},
+                {"scale", {
+                    {"type", "integer"},
+                    {"description", "Output height multiplier (1-20)."},
+                    {"minimum", 1},
+                    {"maximum", 20}
+                }},
+                {"aspect_ratio", {
+                    {"type", "string"},
+                    {"description", "Output aspect ratio. screen follows the current display settings (square pixels while debugging)."},
+                    {"enum", json::array({"screen", "square", "4:3", "16:9", "16:10"})}
+                }},
+                {"quality", {
+                    {"type", "string"},
+                    {"description", "low and medium halve color resolution; lossless writes uncompressed video with very large files; lossless_compressed stores PNG frames, much smaller but needs an FFmpeg based player."},
+                    {"enum", json::array({"low", "medium", "high", "lossless", "lossless_compressed"})}
+                }}
+            }},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "stop_video_recording"},
+        {"title", "Stop Video Recording"},
+        {"description", "Stop the active video recording and finalize the AVI file. Returns the file path and recorded frame count."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", false}, {"openWorldHint", true}}},
         {"inputSchema", {
             {"type", "object"},
             {"properties", json::object()},
@@ -1602,7 +1647,8 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "get_trace_log"},
         {"title", "Get Trace Log"},
-        {"description", "Read trace log entries: CPU instructions and hardware events."},
+        {"description", "Read trace log entries: CPU instructions and hardware events. enabled says whether it records; "
+            "after a reset or media change stopped it, stopped_by says which."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1625,7 +1671,8 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "set_trace_log"},
         {"title", "Set Trace Logger"},
-        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, and event filters."},
+        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, and event filters. "
+            "A reset or media change stops it."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1653,6 +1700,15 @@ json McpServer::BuildToolList()
                     {"type", "string"},
                     {"description", "Directory for the automatically named disk trace file."}
                 }},
+                {"vblank_watch_address", {
+                    {"type", "string"},
+                    {"description", "CPU address hex watched by lcd.missed_vblank: 'C000', '0xC000', or '$C000'. Omit to keep current."}
+                }},
+                {"vblank_watch_operation", {
+                    {"type", "string"},
+                    {"description", "Access that marks a frame as on time for lcd.missed_vblank. Omit to keep current."},
+                    {"enum", json::array({"read", "write", "read_write"})}
+                }},
                 {"filters", {
                     {"type", "array"},
                     {"description", "Exact event streams to record. Defaults to CPU instructions and interrupts."},
@@ -1660,7 +1716,7 @@ json McpServer::BuildToolList()
                         {"type", "string"},
                         {"enum", json::array({
                             "cpu.instructions", "cpu.interrupts",
-                            "lcd.registers", "lcd.interrupts", "lcd.dma",
+                            "lcd.registers", "lcd.interrupts", "lcd.dma", "lcd.sprite_budget", "lcd.sprite_limit", "lcd.missed_vblank",
                             "input.reads", "input.writes",
                             "timer.interrupts", "timer.registers",
                             "apu.global", "apu.pulse1", "apu.pulse2", "apu.wave", "apu.noise", "apu.wave_ram",
@@ -1678,6 +1734,53 @@ json McpServer::BuildToolList()
     });
 
     tools.push_back({
+        {"name", "set_profiler"},
+        {"title", "Set Profiler"},
+        {"description", "Start (opens the Profiler window), stop (closes it), or reset the function profiler. Collects only while the window is visible."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"action", {
+                    {"type", "string"},
+                    {"description", "start opens the window and resumes collection; stop closes the window; reset clears collected data."},
+                    {"enum", json::array({"start", "stop", "reset"})}
+                }}
+            }},
+            {"required", json::array({"action"})},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "get_profiler_data"},
+        {"title", "Get Profiler Data"},
+        {"description", "Read function profiler results: totals plus per-function symbol, address, bank, calls, calls per frame, inclusive/exclusive cycles and percentages, and avg/min/max cycles per call."},
+        {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"sort", {
+                    {"type", "string"},
+                    {"description", "Sort order, highest first (default inclusive)."},
+                    {"enum", json::array({"inclusive", "exclusive", "calls", "average", "max"})}
+                }},
+                {"count", {
+                    {"type", "integer"},
+                    {"description", "Functions to return (default 50, max 1000)"},
+                    {"minimum", 1},
+                    {"maximum", 1000}
+                }},
+                {"filter", {
+                    {"type", "string"},
+                    {"description", "Case-insensitive substring matched against function name or hex address."}
+                }}
+            }},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
         {"name", "get_sgb_status"},
         {"title", "Get SGB Status"},
         {"description", "Read Super Game Boy state: active, mask, multiplayer, last command, transfer, border animation, palettes, attribute map."},
@@ -1686,6 +1789,56 @@ json McpServer::BuildToolList()
             {"type", "object"},
             {"properties", json::object()},
             {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "list_cheats"},
+        {"title", "List Cheats"},
+        {"description", "List cheats: index, code, description, enabled, valid."},
+        {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "add_cheat"},
+        {"title", "Add Cheat"},
+        {"description", "Add enabled cheat: Game Genie XXX-XXX[-XXX] or GameShark 01VVLLHH; join codes with +."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", false}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"code", {
+                    {"type", "string"},
+                    {"description", "Cheat code, e.g. 010FA1C6 (write 0F to C6A1)."}
+                }},
+                {"description", {
+                    {"type", "string"},
+                    {"description", "Cheat description; optional."}
+                }}
+            }},
+            {"required", json::array({"code"})}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "remove_cheat"},
+        {"title", "Remove Cheat"},
+        {"description", "Remove cheat by index from list_cheats."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"index", {
+                    {"type", "integer"},
+                    {"description", "0-based cheat index from list_cheats."},
+                    {"minimum", 0}
+                }}
+            }},
+            {"required", json::array({"index"})}
         }}
     });
 
@@ -2446,6 +2599,18 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
     {
         return m_debugAdapter.GetScreenshot();
     }
+    else if (normalizedTool == "start_video_recording")
+    {
+        std::string file_path = arguments.value("file_path", "");
+        int scale = arguments.value("scale", 0);
+        std::string aspect_ratio = arguments.value("aspect_ratio", "");
+        std::string quality = arguments.value("quality", "");
+        return m_debugAdapter.StartVideoRecording(file_path, scale, aspect_ratio, quality);
+    }
+    else if (normalizedTool == "stop_video_recording")
+    {
+        return m_debugAdapter.StopVideoRecording();
+    }
     // Media and state management
     else if (normalizedTool == "load_media")
     {
@@ -2737,7 +2902,7 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
         bool enabled = arguments["enabled"];
         u32 flags = TRACE_FLAG_CPU | TRACE_FLAG_CPU_IRQ;
         u32 event_filters[TRACE_TYPE_COUNT] = {};
-        event_filters[TRACE_LCD] = TRACE_LCD_FILTER_ALL;
+        event_filters[TRACE_LCD] = TRACE_LCD_FILTER_DEFAULT;
         event_filters[TRACE_INPUT] = TRACE_INPUT_FILTER_ALL;
         event_filters[TRACE_TIMER] = TRACE_TIMER_FILTER_ALL;
         event_filters[TRACE_APU] = TRACE_APU_FILTER_ALL;
@@ -2762,6 +2927,12 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
                         add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_INTERRUPTS);
                     else if (filter == "lcd.dma")
                         add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_DMA);
+                    else if (filter == "lcd.sprite_budget")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_SPRITE_BUDGET);
+                    else if (filter == "lcd.sprite_limit")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_SPRITE_LIMIT);
+                    else if (filter == "lcd.missed_vblank")
+                        add_trace_event_filter(&flags, event_filters, TRACE_LCD, TRACE_LCD_FILTER_MISSED_VBLANK);
                     else if (filter == "input.reads")
                         add_trace_event_filter(&flags, event_filters, TRACE_INPUT, TRACE_INPUT_FILTER_READS);
                     else if (filter == "input.writes")
@@ -2805,12 +2976,42 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
         std::string memory_size = arguments.value("memory_size", "");
         std::string disk_size = arguments.value("disk_size", "");
         std::string output_path = arguments.value("output_path", "");
+        std::string vblank_watch_address = arguments.value("vblank_watch_address", "");
+        std::string vblank_watch_operation = arguments.value("vblank_watch_operation", "");
         return m_debugAdapter.SetTraceLog(enabled, flags, output, memory_size,
-                                          disk_size, output_path, event_filters);
+                                          disk_size, output_path, event_filters,
+                                          vblank_watch_address, vblank_watch_operation);
     }
     else if (normalizedTool == "get_sgb_status")
     {
         return m_debugAdapter.GetSGBStatus();
+    }
+    else if (normalizedTool == "set_profiler")
+    {
+        std::string action = arguments["action"];
+        return m_debugAdapter.SetProfiler(action);
+    }
+    else if (normalizedTool == "get_profiler_data")
+    {
+        std::string sort = arguments.value("sort", "inclusive");
+        int count = arguments.value("count", 50);
+        std::string filter = arguments.value("filter", "");
+        return m_debugAdapter.GetProfilerData(sort, count, filter);
+    }
+    else if (normalizedTool == "list_cheats")
+    {
+        return m_debugAdapter.ListCheats();
+    }
+    else if (normalizedTool == "add_cheat")
+    {
+        std::string code = arguments["code"];
+        std::string description = arguments.value("description", "");
+        return m_debugAdapter.AddCheat(code, description);
+    }
+    else if (normalizedTool == "remove_cheat")
+    {
+        int index = arguments["index"];
+        return m_debugAdapter.RemoveCheat(index);
     }
     else
     {
@@ -2875,7 +3076,8 @@ static bool IsValidResourceName(const std::string& name)
 
 void McpServer::LoadResourcesFromCategory(const std::string& category, const std::string& tocPath)
 {
-    std::ifstream file(tocPath);
+    std::ifstream file;
+    open_ifstream_utf8(file, tocPath.c_str(), std::ios::in);
     if (!file.is_open())
     {
         Log("[MCP] Warning: Resources TOC file not found: %s", tocPath.c_str());
@@ -2951,7 +3153,8 @@ void McpServer::LoadResourcesFromCategory(const std::string& category, const std
 bool McpServer::ReadFileContents(const std::string& filePath, std::string& content)
 {
     content.clear();
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file;
+    open_ifstream_utf8(file, filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
         Log("[MCP] Warning: Failed to open resource file: %s", filePath.c_str());

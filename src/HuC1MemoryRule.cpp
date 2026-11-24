@@ -26,10 +26,7 @@
 
 const int kHuC1RamBanksSize = 0x8000;
 
-HuC1MemoryRule::HuC1MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+HuC1MemoryRule::HuC1MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     m_pRAMBanks = new u8[kHuC1RamBanksSize];
     Reset(false);
@@ -226,7 +223,7 @@ void HuC1MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentRAMAddress), sizeof(m_CurrentRAMAddress));
 }
 
-void HuC1MemoryRule::LoadState(std::istream& stream)
+void HuC1MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

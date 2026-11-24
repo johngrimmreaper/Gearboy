@@ -35,6 +35,31 @@ extern "C" {
  ********************************
  */
 
+#define BARCODE_DIGIT_OPTION(number) \
+    { \
+        "gearboy_barcode_digit_" #number, \
+        "Barcode Boy Custom Digit " #number, \
+        NULL, \
+        "Digit " #number " of the custom 13-digit barcode, from left to right. " \
+        "Select Custom, set all digits, then press Scan Barcode (RetroPad R).", \
+        NULL, \
+        "barcode", \
+        { \
+            { "0", NULL }, \
+            { "1", NULL }, \
+            { "2", NULL }, \
+            { "3", NULL }, \
+            { "4", NULL }, \
+            { "5", NULL }, \
+            { "6", NULL }, \
+            { "7", NULL }, \
+            { "8", NULL }, \
+            { "9", NULL }, \
+            { NULL, NULL } \
+        }, \
+        "0" \
+    }
+
 struct retro_core_option_v2_category option_cats_us[] = {
     {
         "system",
@@ -51,10 +76,64 @@ struct retro_core_option_v2_category option_cats_us[] = {
         "Input",
         "Configure controller behavior and directional input settings."
     },
+    {
+        "link",
+        "Game Link Cable",
+        "Configure two linked Game Boy systems, screen layout and audio output."
+    },
+    {
+        "barcode",
+        "Barcode Boy",
+        "Choose a card or enter 13 custom digits, then press Scan Barcode (RetroPad R)."
+    },
     { NULL, NULL, NULL },
 };
 
 struct retro_core_option_v2_definition option_defs_us[] = {
+
+    {
+        "gearboy_barcode_boy",
+        "Barcode Boy Mode (restart)",
+        NULL,
+        "Auto attaches Barcode Boy to games recognized by ROM CRC. Enabled supports unrecognized or patched ROMs. "
+        "Game Link mode reserves the serial port and disables Barcode Boy.",
+        NULL,
+        "barcode",
+        {
+            { "Auto",     NULL },
+            { "Disabled", NULL },
+            { "Enabled",  NULL },
+            { NULL, NULL }
+        },
+        "Auto"
+    },
+    {
+        "gearboy_barcode",
+        "Barcode Boy Card",
+        NULL,
+        "Choose a documented card, or Custom to enter 13 digits. Resume the game and press Scan Barcode (RetroPad R) "
+        "to scan. Changing this option does not scan automatically.",
+        NULL,
+        "barcode",
+        {
+            { "Custom", NULL },
+            { NULL, NULL }
+        },
+        "Custom"
+    },
+    BARCODE_DIGIT_OPTION(1),
+    BARCODE_DIGIT_OPTION(2),
+    BARCODE_DIGIT_OPTION(3),
+    BARCODE_DIGIT_OPTION(4),
+    BARCODE_DIGIT_OPTION(5),
+    BARCODE_DIGIT_OPTION(6),
+    BARCODE_DIGIT_OPTION(7),
+    BARCODE_DIGIT_OPTION(8),
+    BARCODE_DIGIT_OPTION(9),
+    BARCODE_DIGIT_OPTION(10),
+    BARCODE_DIGIT_OPTION(11),
+    BARCODE_DIGIT_OPTION(12),
+    BARCODE_DIGIT_OPTION(13),
 
     /* System */
 
@@ -102,6 +181,17 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { "Bung/EMS",        NULL },
             { "Poke 2-in-1",     NULL },
             { "MBC 6",           NULL },
+            { "Rocket Games",    NULL },
+            { "BHGOS",           NULL },
+            { "Li Cheng",        NULL },
+            { "NT newer",        NULL },
+            { "GGB81",           NULL },
+            { "Hitek",           NULL },
+            { "VF001",           NULL },
+            { "VF001 (SL)",      NULL },
+            { "Sintax",          NULL },
+            { "NT old 1",        NULL },
+            { "NT old 2",        NULL },
             { NULL, NULL },
         },
         "Auto"
@@ -119,6 +209,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { NULL, NULL },
         },
         "Enabled"
+    },
+    {
+        "gearboy_sgb_all_games",
+        "Super Game Boy for All Games (restart)",
+        NULL,
+        "When enabled and an SGB BIOS (SGB1.sfc or SGB2.sfc) is in the system directory, regular Game Boy (DMG) games also run in Super Game Boy mode, using the BIOS default palette and border.",
+        NULL,
+        "system",
+        {
+            { "Disabled", NULL },
+            { "Enabled",  NULL },
+            { NULL, NULL },
+        },
+        "Disabled"
     },
     {
         "gearboy_sgb_border",
@@ -162,6 +266,58 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "Disabled"
     },
+
+    /* Video */
+
+    {
+        "gearboy_palette",
+        "DMG Palette",
+        NULL,
+        "Select a color palette for original Game Boy (DMG) games. This setting has no effect on Game Boy Color games, which use their own built-in color palettes.",
+        NULL,
+        "video",
+        {
+            { "Original", NULL },
+            { "Sharp",    NULL },
+            { "B/W",      NULL },
+            { "Autumn",   NULL },
+            { "Soft",     NULL },
+            { "Slime",    NULL },
+            { NULL, NULL },
+        },
+        "Original"
+    },
+    {
+        "gearboy_color_correction",
+        "GBC Color Correction",
+        NULL,
+        "Apply color correction for Game Boy Color games to simulate the original GBC LCD screen output. When disabled, raw RGB colors are displayed which may appear overly saturated on modern displays.",
+        NULL,
+        "video",
+        {
+            { "Disabled", NULL },
+            { "Enabled",  NULL },
+            { NULL, NULL },
+        },
+        "Disabled"
+    },
+    {
+        "gearboy_no_sprite_limit",
+        "No Sprite Limit",
+        NULL,
+        "Remove the per-line sprite limit. This reduces flickering but may cause glitches in certain games. It's best to keep this option disabled.",
+        NULL,
+        "video",
+        {
+            { "Disabled", NULL },
+            { "Enabled",  NULL },
+            { NULL, NULL },
+        },
+        "Disabled"
+    },
+
+    /* Input */
+
     {
         "gearboy_tilt_source",
         "Tilt Source (MBC7)",
@@ -345,58 +501,6 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "Disabled"
     },
-
-    /* Video */
-
-    {
-        "gearboy_palette",
-        "DMG Palette",
-        NULL,
-        "Select a color palette for original Game Boy (DMG) games. This setting has no effect on Game Boy Color games, which use their own built-in color palettes.",
-        NULL,
-        "video",
-        {
-            { "Original", NULL },
-            { "Sharp",    NULL },
-            { "B/W",      NULL },
-            { "Autumn",   NULL },
-            { "Soft",     NULL },
-            { "Slime",    NULL },
-            { NULL, NULL },
-        },
-        "Original"
-    },
-    {
-        "gearboy_color_correction",
-        "GBC Color Correction",
-        NULL,
-        "Apply color correction for Game Boy Color games to simulate the original GBC LCD screen output. When disabled, raw RGB colors are displayed which may appear overly saturated on modern displays.",
-        NULL,
-        "video",
-        {
-            { "Disabled", NULL },
-            { "Enabled",  NULL },
-            { NULL, NULL },
-        },
-        "Disabled"
-    },
-    {
-        "gearboy_no_sprite_limit",
-        "No Sprite Limit",
-        NULL,
-        "Remove the per-line sprite limit. This reduces flickering but may cause glitches in certain games. It's best to keep this option disabled.",
-        NULL,
-        "video",
-        {
-            { "Disabled", NULL },
-            { "Enabled",  NULL },
-            { NULL, NULL },
-        },
-        "Disabled"
-    },
-
-    /* Input */
-
     {
         "gearboy_up_down_allowed",
         "Allow Up+Down / Left+Right",
@@ -412,8 +516,85 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "Disabled"
     },
 
-    { NULL, NULL, NULL, NULL, NULL, NULL, {{0}}, NULL },
+    /* Game Link Cable */
+
+    {
+        "gearboy_link_enable",
+        "Game Link Cable Enable (restart)",
+        NULL,
+        "Run two linked Game Boy systems. Loading one ROM runs a separate copy on each screen; use the 2 Player Game Boy Link subsystem to load two different ROMs. Controller ports 1 and 2 control screens 1 and 2. Super Game Boy mode is disabled when linking.",
+        NULL,
+        "link",
+        {
+            { "Enabled", NULL },
+            { "Disabled", NULL },
+            { NULL, NULL },
+        },
+        "Disabled"
+    },
+    {
+        "gearboy_link_placement",
+        "Dual Screen Placement",
+        NULL,
+        "Arrange both screens horizontally or vertically.",
+        NULL,
+        "link",
+        {
+            { "Horizontal", NULL },
+            { "Vertical", NULL },
+            { NULL, NULL },
+        },
+        "Horizontal"
+    },
+    {
+        "gearboy_link_switch",
+        "Dual Screen Switch",
+        NULL,
+        "Swap the positions of the two screens. Controller assignments, screen selection and audio selection still refer to the original screen numbers.",
+        NULL,
+        "link",
+        {
+            { "Enabled", NULL },
+            { "Disabled", NULL },
+            { NULL, NULL },
+        },
+        "Disabled"
+    },
+    {
+        "gearboy_link_screen",
+        "Dual Screen Selection",
+        NULL,
+        "Display both screens or only the selected system. Both systems continue running.",
+        NULL,
+        "link",
+        {
+            { "Both Screens", NULL },
+            { "Screen 1", NULL },
+            { "Screen 2", NULL },
+            { NULL, NULL },
+        },
+        "Both Screens"
+    },
+    {
+        "gearboy_link_audio",
+        "Dual Screen Audio",
+        NULL,
+        "Choose the system to hear, or mix both systems at half volume each.",
+        NULL,
+        "link",
+        {
+            { "Screen 1", NULL },
+            { "Screen 2", NULL },
+            { "Mix", NULL },
+            { NULL, NULL },
+        },
+        "Screen 1"
+    },
+
+    { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
 };
+
+#undef BARCODE_DIGIT_OPTION
 
 struct retro_core_options_v2 options_us = {
     option_cats_us,
