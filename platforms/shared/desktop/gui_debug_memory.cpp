@@ -41,7 +41,11 @@ static bool memory_settings_read_editor(std::istream& stream, std::vector<MemEdi
 void gui_debug_memory_init(void)
 {
     gui_debug_memory_reset();
+    gui_debug_memory_apply_settings();
+}
 
+void gui_debug_memory_apply_settings(void)
+{
     for (int i = 0; i < MEMORY_EDITOR_MAX; i++)
     {
         MemEditor::Options options;
@@ -73,10 +77,18 @@ void gui_debug_memory_reset(void)
     Memory* memory = core->GetMemory();
     MemoryRule* rule = memory->GetCurrentRule();
     bool mbc6 = IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeMBC6;
-    bool has_ram = core->GetCartridge()->HasRam() || mbc6;
+    bool ntnew = IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeNTNew;
+    bool ggb81 = IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeGGB81;
+    bool hitek = IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeHitek;
+    bool sintax = IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeSintax;
+    bool vf001 = IsValidPointer(rule) && (rule->GetMapperType() == Cartridge::CartridgeVF001 || rule->GetMapperType() == Cartridge::CartridgeVF001A);
+    bool has_ram = core->GetCartridge()->HasRam() || mbc6 ||
+            ntnew || ggb81 || hitek || sintax || (IsValidPointer(rule) &&
+            (rule->GetMapperType() == Cartridge::CartridgeLiCheng ||
+             ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0)));
 
-    mem_edit[MEMORY_EDITOR_ROM0].Reset("ROM0", memory->GetROM0(), 0x4000);
-    mem_edit[MEMORY_EDITOR_ROM1].Reset("ROM1", memory->GetROM1(), 0x4000, 0x4000, 1, mbc6);
+    mem_edit[MEMORY_EDITOR_ROM0].Reset("ROM0", memory->GetROM0(), 0x4000, 0, 1, vf001);
+    mem_edit[MEMORY_EDITOR_ROM1].Reset("ROM1", memory->GetROM1(), 0x4000, 0x4000, 1, mbc6 || ntnew || ggb81 || hitek || sintax);
     mem_edit[MEMORY_EDITOR_VRAM].Reset("VRAM", memory->GetVRAM(), 0x2000, 0x8000);
 
     reset_ram_editor(core, memory, rule);
@@ -112,7 +124,6 @@ void gui_debug_window_memory(void)
     for (int i = 0; i < MEMORY_EDITOR_MAX; i++)
     {
         mem_edit[i].SetGuiFont(gui_roboto_font);
-        mem_edit[i].WatchPopup();
         mem_edit[i].BookMarkPopup();
     }
 
@@ -144,6 +155,13 @@ void gui_debug_window_memory(void)
             ImGui::TextColored(cyan, (bank_b & 0x80) ? "FLASHB" : "ROMB"); ImGui::SameLine();
             ImGui::Text("$%02X", bank_b & 0x7F);
         }
+        else if (rule->GetMapperType() == Cartridge::CartridgeNTNew)
+        {
+            ImGui::TextColored(cyan, "ROMA"); ImGui::SameLine();
+            ImGui::Text("$%03X", rule->GetCurrentRomBankIndex(0x4000)); ImGui::SameLine();
+            ImGui::TextColored(cyan, "ROMB"); ImGui::SameLine();
+            ImGui::Text("$%03X", rule->GetCurrentRomBankIndex(0x6000));
+        }
         else
         {
             ImGui::TextColored(cyan, "ROM0"); ImGui::SameLine();
@@ -152,7 +170,10 @@ void gui_debug_window_memory(void)
             ImGui::Text("$%02X", rule->GetCurrentRomBank1Index());
         }
 
-        if (core->GetCartridge()->HasRam() || rule->GetMapperType() == Cartridge::CartridgeMBC6)
+        if (core->GetCartridge()->HasRam() || rule->GetMapperType() == Cartridge::CartridgeMBC6 ||
+                rule->GetMapperType() == Cartridge::CartridgeLiCheng || rule->GetMapperType() == Cartridge::CartridgeNTNew ||
+                rule->GetMapperType() == Cartridge::CartridgeGGB81 || rule->GetMapperType() == Cartridge::CartridgeHitek || rule->GetMapperType() == Cartridge::CartridgeSintax ||
+             ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0))
         {
             ImGui::SameLine();
             if (rule->GetMapperType() == Cartridge::CartridgeMBC6)
@@ -194,7 +215,11 @@ static void draw_tabs(void)
 {
     GearboyCore* core = emu_get_core();
     MemoryRule* rule = core->GetMemory()->GetCurrentRule();
-    bool has_ram = core->GetCartridge()->HasRam() || (IsValidPointer(rule) && rule->GetMapperType() == Cartridge::CartridgeMBC6);
+    bool has_ram = core->GetCartridge()->HasRam() || (IsValidPointer(rule) &&
+            (rule->GetMapperType() == Cartridge::CartridgeMBC6 || rule->GetMapperType() == Cartridge::CartridgeLiCheng ||
+             rule->GetMapperType() == Cartridge::CartridgeNTNew || rule->GetMapperType() == Cartridge::CartridgeGGB81 ||
+             rule->GetMapperType() == Cartridge::CartridgeHitek || rule->GetMapperType() == Cartridge::CartridgeSintax ||
+             ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0)));
 
     for (int i = 0; i < MEMORY_EDITOR_MAX; i++)
     {
@@ -232,7 +257,11 @@ static void reset_ram_editor(GearboyCore* core, Memory* memory, MemoryRule* rule
 {
     size_t ram_size = 0;
 
-    if (rule != NULL && (core->GetCartridge()->HasRam() || rule->GetMapperType() == Cartridge::CartridgeMBC6))
+    if (rule != NULL && (core->GetCartridge()->HasRam() ||
+            rule->GetMapperType() == Cartridge::CartridgeMBC6 || rule->GetMapperType() == Cartridge::CartridgeLiCheng ||
+            rule->GetMapperType() == Cartridge::CartridgeNTNew || rule->GetMapperType() == Cartridge::CartridgeGGB81 ||
+            rule->GetMapperType() == Cartridge::CartridgeHitek || rule->GetMapperType() == Cartridge::CartridgeSintax ||
+             ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0)))
     {
         ram_size = rule->GetRamSize();
         if (ram_size > 0x2000)
@@ -253,17 +282,27 @@ static void refresh_memory_banks(void)
     if (rule == NULL)
         return;
 
+    bool vf001 = rule->GetMapperType() == Cartridge::CartridgeVF001 || rule->GetMapperType() == Cartridge::CartridgeVF001A;
+    if (vf001)
+        memory->GetROM0();
+
     int rom0_bank = rule->GetCurrentRomBank0Index();
     if (rom0_bank != current_rom0_bank)
     {
-        mem_edit[MEMORY_EDITOR_ROM0].Reset("ROM0", memory->GetROM0(), 0x4000);
+        mem_edit[MEMORY_EDITOR_ROM0].Reset("ROM0", memory->GetROM0(), 0x4000, 0, 1, vf001);
         current_rom0_bank = rom0_bank;
     }
 
     bool mbc6 = rule->GetMapperType() == Cartridge::CartridgeMBC6;
+    bool ntnew = rule->GetMapperType() == Cartridge::CartridgeNTNew;
+    bool ggb81 = rule->GetMapperType() == Cartridge::CartridgeGGB81;
+    bool hitek = rule->GetMapperType() == Cartridge::CartridgeHitek;
+    bool sintax = rule->GetMapperType() == Cartridge::CartridgeSintax;
+    if (mbc6 || ntnew || ggb81 || hitek || sintax)
+        memory->GetROM1();
+
     if (mbc6)
     {
-        memory->GetROM1();
         memory->GetRAM();
     }
 
@@ -271,12 +310,14 @@ static void refresh_memory_banks(void)
     int rom2_bank = rule->GetCurrentRomBankIndex(0x6000);
     if (rom1_bank != current_rom1_bank || rom2_bank != current_rom2_bank)
     {
-        mem_edit[MEMORY_EDITOR_ROM1].Reset("ROM1", memory->GetROM1(), 0x4000, 0x4000, 1, mbc6);
+        mem_edit[MEMORY_EDITOR_ROM1].Reset("ROM1", memory->GetROM1(), 0x4000, 0x4000, 1, mbc6 || ntnew || ggb81 || hitek || sintax);
         current_rom1_bank = rom1_bank;
         current_rom2_bank = rom2_bank;
     }
 
-    bool has_ram = core->GetCartridge()->HasRam() || mbc6;
+    bool has_ram = core->GetCartridge()->HasRam() || mbc6 || ntnew || ggb81 || hitek || sintax ||
+            rule->GetMapperType() == Cartridge::CartridgeLiCheng ||
+            ((rule->GetMapperType() == Cartridge::CartridgeNTOld1 || rule->GetMapperType() == Cartridge::CartridgeNTOld2) && rule->GetRamSize() > 0);
     int ram_bank = has_ram ? rule->GetCurrentRamBankIndex(0xA000) : 0;
     int ram2_bank = has_ram ? rule->GetCurrentRamBankIndex(0xB000) : 0;
     if (ram_bank != current_ram_bank || ram2_bank != current_ram2_bank)
@@ -318,6 +359,12 @@ void gui_debug_memory_find_bytes_window(void)
         ImGui::PushFont(gui_default_font);
         mem_edit[i].DrawFindBytesWindow();
         ImGui::PopFont();
+
+        if (mem_edit[i].ConsumeShowRequest())
+        {
+            config_debug.show_memory = true;
+            mem_edit_select = i;
+        }
     }
 }
 
@@ -325,6 +372,8 @@ void gui_debug_memory_watches_window(void)
 {
     for (int i = 0; i < MEMORY_EDITOR_MAX; i++)
     {
+        mem_edit[i].SetGuiFont(gui_roboto_font);
+        mem_edit[i].WatchPopup();
         ImGui::PushFont(gui_default_font);
         mem_edit[i].DrawWatchWindow();
         ImGui::PopFont();
@@ -356,6 +405,7 @@ void gui_debug_memory_select_all(void)
 
 void gui_debug_memory_goto(int editor, int address)
 {
+    config_debug.show_memory = true;
     mem_edit_select = editor;
     mem_edit[editor].JumpToAddress(address);
 }
@@ -381,6 +431,7 @@ bool gui_debug_memory_select_range(int editor, int start_address, int end_addres
     if (!mem_edit[editor].SetSelection(start_address, end_address))
         return false;
 
+    config_debug.show_memory = true;
     mem_edit_select = editor;
     mem_edit[editor].ScrollToAddress(start_address);
 
@@ -449,14 +500,6 @@ bool gui_debug_memory_add_watch(int editor, int address, const char* notes, int 
     }
 
     return mem_edit[editor].AddWatchDirect(address, notes, size_index);
-}
-
-void gui_debug_memory_open_watch_popup(int editor, int address, const char* notes)
-{
-    if (editor < 0 || editor >= MEMORY_EDITOR_MAX)
-        return;
-
-    mem_edit[editor].PrepareAddWatch(address, notes);
 }
 
 void gui_debug_memory_remove_watch(int editor, int address)
@@ -601,16 +644,16 @@ static void memory_editor_menu(void)
 
     if (ImGui::BeginMenu("Edit"))
     {
-        if (ImGui::MenuItem("Copy", "Ctrl+C"))
+        if (ImGui::MenuItem("Copy", CONFIG_PRIMARY_LABEL "C"))
             gui_debug_memory_copy();
-        if (ImGui::MenuItem("Paste", "Ctrl+V"))
+        if (ImGui::MenuItem("Paste", CONFIG_PRIMARY_LABEL "V"))
             gui_debug_memory_paste();
         ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("Selection"))
     {
-        if (ImGui::MenuItem("Select All", "Ctrl+A"))
+        if (ImGui::MenuItem("Select All", CONFIG_PRIMARY_LABEL "A"))
             mem_edit[current_mem_edit].SelectAll();
         if (ImGui::MenuItem("Clear Selection"))
             mem_edit[current_mem_edit].ClearSelection();

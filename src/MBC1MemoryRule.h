@@ -25,8 +25,7 @@
 class MBC1MemoryRule : public MemoryRule
 {
 public:
-    MBC1MemoryRule(Processor* pProcessor, Memory* pMemory,
-            Video* pVideo, Input* pInput, Cartridge* pCartridge, Audio* pAudio);
+    MBC1MemoryRule(Memory* pMemory, Cartridge* pCartridge);
     virtual ~MBC1MemoryRule();
     virtual u8 PerformRead(u16 address);
     virtual void PerformWrite(u16 address, u8 value);
@@ -43,7 +42,7 @@ public:
     virtual u8* GetCurrentRomBank1();
     virtual int GetCurrentRomBank1Index();
     virtual void SaveState(std::ostream& stream);
-    virtual void LoadState(std::istream& stream);
+    virtual void LoadState(std::istream& stream, u32 version = GB_SAVESTATE_VERSION);
 
 private:
     void UpdateBanks();

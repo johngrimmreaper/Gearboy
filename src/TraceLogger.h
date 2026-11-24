@@ -47,7 +47,6 @@ static_assert(TRACE_TYPE_COUNT < 32, "Trace category count exceeds flag width");
 #define TRACE_FLAG_APU          (1U << TRACE_APU)
 #define TRACE_FLAG_SERIAL       (1U << TRACE_SERIAL)
 #define TRACE_FLAG_MAPPER       (1U << TRACE_MAPPER)
-#define TRACE_FLAG_ALL          ((1U << TRACE_TYPE_COUNT) - 1)
 
 enum GB_Trace_LCD_Event : u8
 {
@@ -60,6 +59,9 @@ enum GB_Trace_LCD_Event : u8
     TRACE_LCD_CGB_DMA_BLOCK,
     TRACE_LCD_CGB_DMA_END,
     TRACE_LCD_CGB_DMA_CANCEL,
+    TRACE_LCD_SPRITE_BUDGET,
+    TRACE_LCD_SPRITE_LIMIT,
+    TRACE_LCD_MISSED_VBLANK,
 };
 
 enum GB_Trace_Input_Event : u8
@@ -112,8 +114,15 @@ enum GB_Trace_Mapper_Event : u8
     (TRACE_EVENT_FLAG(TRACE_LCD_OAM_DMA_START) | TRACE_EVENT_FLAG(TRACE_LCD_OAM_DMA_END) | \
      TRACE_EVENT_FLAG(TRACE_LCD_CGB_DMA_START) | TRACE_EVENT_FLAG(TRACE_LCD_CGB_DMA_BLOCK) | \
      TRACE_EVENT_FLAG(TRACE_LCD_CGB_DMA_END) | TRACE_EVENT_FLAG(TRACE_LCD_CGB_DMA_CANCEL))
-#define TRACE_LCD_FILTER_ALL                  \
+#define TRACE_LCD_FILTER_SPRITE_BUDGET       TRACE_EVENT_FLAG(TRACE_LCD_SPRITE_BUDGET)
+#define TRACE_LCD_FILTER_SPRITE_LIMIT        TRACE_EVENT_FLAG(TRACE_LCD_SPRITE_LIMIT)
+#define TRACE_LCD_FILTER_SPRITES             \
+    (TRACE_LCD_FILTER_SPRITE_BUDGET | TRACE_LCD_FILTER_SPRITE_LIMIT)
+#define TRACE_LCD_FILTER_MISSED_VBLANK       TRACE_EVENT_FLAG(TRACE_LCD_MISSED_VBLANK)
+#define TRACE_LCD_FILTER_DEFAULT             \
     (TRACE_LCD_FILTER_REGISTERS | TRACE_LCD_FILTER_INTERRUPTS | TRACE_LCD_FILTER_DMA)
+#define TRACE_LCD_FILTER_ALL                  \
+    (TRACE_LCD_FILTER_DEFAULT | TRACE_LCD_FILTER_SPRITES | TRACE_LCD_FILTER_MISSED_VBLANK)
 
 #define TRACE_INPUT_FILTER_READS             TRACE_EVENT_FLAG(TRACE_INPUT_READ)
 #define TRACE_INPUT_FILTER_WRITES            TRACE_EVENT_FLAG(TRACE_INPUT_WRITE)
@@ -215,7 +224,6 @@ struct GB_Trace_Entry
             u8 control;
             u8 value;
             u8 event;
-            u8 enabled;
         } timer;
 
         struct
@@ -276,10 +284,8 @@ public:
     void SetEventFilter(GB_Trace_Type type, u32 filter);
     u32 GetEnabledFlags() const;
     u32 GetEventFilter(GB_Trace_Type type) const;
-    const GB_Trace_Entry* GetBuffer() const;
     u32 GetCount() const;
     u32 GetCapacity() const;
-    u32 GetPosition() const;
     u64 GetTotalLogged() const;
     u64 GetSequence() const;
     u64 GetLinkCableCycle() const;

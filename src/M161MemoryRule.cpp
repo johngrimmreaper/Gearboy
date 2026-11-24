@@ -24,10 +24,7 @@
 #include "Input.h"
 #include "Cartridge.h"
 
-M161MemoryRule::M161MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+M161MemoryRule::M161MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     Reset(false);
 }
@@ -146,7 +143,7 @@ void M161MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_bLocked), sizeof(m_bLocked));
 }
 
-void M161MemoryRule::LoadState(std::istream& stream)
+void M161MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

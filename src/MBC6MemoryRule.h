@@ -25,8 +25,7 @@
 class MBC6MemoryRule : public MemoryRule
 {
 public:
-    MBC6MemoryRule(Processor* pProcessor, Memory* pMemory, Video* pVideo, Input* pInput,
-            Cartridge* pCartridge, Audio* pAudio);
+    MBC6MemoryRule(Memory* pMemory, Cartridge* pCartridge);
     virtual ~MBC6MemoryRule();
     virtual u8 PerformRead(u16 address);
     virtual void PerformWrite(u16 address, u8 value);
@@ -48,7 +47,7 @@ public:
     virtual u32 GetPhysicalROMAddress(u16 address);
     virtual u32 GetPhysicalROMAddress(u16 address, u16 bank);
     virtual void SaveState(std::ostream& stream);
-    virtual void LoadState(std::istream& stream);
+    virtual void LoadState(std::istream& stream, u32 version = GB_SAVESTATE_VERSION);
 
     void InitializePersistentMemory();
 
@@ -119,7 +118,6 @@ private:
     void ResetFlashCommand();
     void ResetFlashMode();
     void EnterStatusMode();
-    void PersistentMemoryChanged();
     void RefreshROMView();
     void RefreshRAMView();
 

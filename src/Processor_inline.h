@@ -24,6 +24,7 @@
 #include "definitions.h"
 #include "log.h"
 #include "Memory.h"
+#include "Profiler.h"
 #include "opcode_timing.h"
 
 INLINE void Processor::TraceInstruction(u16 pc, bool halt_bug)
@@ -48,14 +49,6 @@ INLINE void Processor::TraceSerialEvent(u8 event, u64 link_cycle)
 {
     if (IsValidPointer(m_pTraceLogger) && m_pTraceLogger->IsEventEnabled(TRACE_SERIAL, event))
         LogSerialEvent(event, link_cycle);
-}
-
-inline bool Processor::InterruptIsAboutToRaise()
-{
-    u8 ie_reg = m_pMemory->Retrieve(0xFFFF);
-    u8 if_reg = m_pMemory->Retrieve(0xFF0F);
-
-    return (if_reg & ie_reg & 0x1F) != 0;
 }
 
 inline Processor::Interrupts Processor::InterruptPending()
@@ -207,11 +200,6 @@ inline int Processor::AdjustedCycles(int cycles)
 {
     if (!cycles) return cycles;
     return cycles >> m_iSpeedMultiplier;
-}
-
-NO_INLINE COLD inline void Processor::InvalidOPCode()
-{
-    Debug("--> ** INVALID OP Code");
 }
 
 inline void Processor::OPCodes_LD(u8* reg1, u8 reg2)
@@ -739,9 +727,25 @@ inline std::vector<Processor::GB_Breakpoint>* Processor::GetBreakpoints()
     return &m_breakpoints;
 }
 
-INLINE bool Processor::MemoryBreakpointsEnabled() const
+INLINE bool Processor::HasMemoryHooks(bool read) const
 {
-    return m_breakpoints_enabled;
+    return read ? m_memory_hooks_read : m_memory_hooks_write;
+}
+
+INLINE void Processor::CheckVBlankWatch(u16 address, bool read)
+{
+    if ((read ? m_vblank_watch_read : m_vblank_watch_write) && (address == m_vblank_watch_address))
+        m_vblank_watch_hit = true;
+}
+
+INLINE u16 Processor::GetVBlankWatchAddress() const
+{
+    return m_vblank_watch_address;
+}
+
+INLINE bool Processor::GetVBlankWatchAccess(bool read) const
+{
+    return read ? m_vblank_watch_read : m_vblank_watch_write;
 }
 
 inline std::stack<Processor::GB_CallStackEntry>* Processor::GetDisassemblerCallStack()
@@ -749,7 +753,7 @@ inline std::stack<Processor::GB_CallStackEntry>* Processor::GetDisassemblerCallS
     return &m_disassembler_call_stack;
 }
 
-inline void Processor::PushCallStack(u16 src, u16 dest, u16 back, u8 bank)
+inline void Processor::PushCallStack(u16 src, u16 dest, u16 back, u8 bank, u8 machine_cycles, bool irq)
 {
 #if !defined(GEARBOY_DISABLE_DISASSEMBLER)
     GB_CallStackEntry entry;
@@ -759,19 +763,29 @@ inline void Processor::PushCallStack(u16 src, u16 dest, u16 back, u8 bank)
     entry.bank = bank;
     if (m_disassembler_call_stack.size() < 256)
         m_disassembler_call_stack.push(entry);
+
+    if (unlikely(m_pProfiler->IsEnabled()))
+        ProfilerEnter(dest, m_iCurrentClockCycles + (machine_cycles * m_iMachineCycle), irq);
 #else
     UNUSED(src);
     UNUSED(dest);
     UNUSED(back);
     UNUSED(bank);
+    UNUSED(machine_cycles);
+    UNUSED(irq);
 #endif
 }
 
-inline void Processor::PopCallStack()
+inline void Processor::PopCallStack(u8 machine_cycles)
 {
 #if !defined(GEARBOY_DISABLE_DISASSEMBLER)
     if (!m_disassembler_call_stack.empty())
         m_disassembler_call_stack.pop();
+
+    if (unlikely(m_pProfiler->IsEnabled()))
+        m_pProfiler->Return((u16)(SP.GetValue() - 2), m_iCurrentClockCycles + (machine_cycles * m_iMachineCycle));
+#else
+    UNUSED(machine_cycles);
 #endif
 }
 
@@ -802,6 +816,10 @@ INLINE u8 Processor::RunFor(u8 ticks)
                 {
                     m_iUnhaltCycles = 0;
                     m_bHalt = false;
+#if !defined(GEARBOY_DISABLE_DISASSEMBLER)
+                    if (unlikely(m_pProfiler->IsEnabled()))
+                        m_pProfiler->Halt(false, m_iCurrentClockCycles);
+#endif
                 }
             }
 
@@ -830,7 +848,11 @@ INLINE u8 Processor::RunFor(u8 ticks)
                     TraceInstruction(PC.GetValue(), m_bSkipPCBug);
 #endif
 
-                u8 opcode = m_pMemory->Read(PC.GetValue());
+                // Timing steps resume the fetched instruction without another cartridge read.
+                bool fetch = (m_iAccurateOPCodeState == 0) || (m_OpcodeCache == 0xFFFF);
+                u8 opcode = fetch ? m_pMemory->Read(PC.GetValue()) : (u8)m_OpcodeCache;
+                if (fetch)
+                    m_OpcodeCache = opcode;
                 PC.Increment();
 
                 if (m_bSkipPCBug)
@@ -850,7 +872,9 @@ INLINE u8 Processor::RunFor(u8 ticks)
                     machineCycles = kOPCodeCBMachineCycles;
                     opcodeTable = m_OPCodesCB;
 
-                    opcode = m_pMemory->Read(PC.GetValue());
+                    opcode = fetch ? m_pMemory->Read(PC.GetValue()) : (u8)(m_OpcodeCache >> 8);
+                    if (fetch)
+                        m_OpcodeCache |= opcode << 8;
                     PC.Increment();
 
                     if (m_bSkipPCBug)

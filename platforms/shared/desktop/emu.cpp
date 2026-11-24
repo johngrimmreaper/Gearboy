@@ -20,6 +20,7 @@
 #include "emu.h"
 
 #include <string.h>
+#include <math.h>
 #include <thread>
 #include <atomic>
 #include "gearboy.h"
@@ -27,6 +28,8 @@
 #include "config.h"
 #include "rewind.h"
 #include "runahead.h"
+#include "video_recorder.h"
+#include "ogl_renderer.h"
 #include "events.h"
 #include "gui_debug_trace_logger.h"
 #include "mcp/mcp_manager.h"
@@ -48,7 +51,6 @@ static GB_Color slime_palette[4] = {{0xD4,0xEB,0xA5},{0x62,0xB8,0x7C},{0x27,0x76
 static GearboyCore* gearboy;
 static u16* frame_buffer_565;
 static s16* audio_buffer;
-static bool audio_enabled;
 static McpManager* mcp_manager;
 static LinkCableManager* link_cable_manager;
 static bool link_cable_applied;
@@ -59,6 +61,7 @@ static u16* debug_tile_buffers_565[2];
 static u16* debug_oam_buffers_565[40];
 static Uint64 rewind_last_counter = 0;
 static double rewind_pop_accumulator = 0.0;
+static bool video_recording_output = false;
 
 enum Loading_State
 {
@@ -90,9 +93,10 @@ static void debug_step_instruction(void);
 static void update_debug_background_buffer(void);
 static void update_debug_tile_buffers(void);
 static void update_debug_oam_buffers(void);
+static void get_video_recording_size(const GB_RuntimeInfo& runtime, int* width, int* height);
 static void reset_rewind_timing(void);
 static int get_rewind_pop_budget(void);
-static void link_cable_state_callback(u64 cycle, u8 sb, u8 sc, void* user_data);
+static void link_cable_state_callback(u64 cycle, u8 sb, u8 sc, GB_SerialEvent, void* user_data);
 static void link_cable_start_callback(u64 request_cycle, u64 first_shift_cycle, u32 bit_cycles,
     u8 outgoing_byte, u32 transfer_id, u8* incoming_byte, void* user_data);
 static bool link_cable_poll_callback(u64 current_cycle, GB_LinkCableTransfer* transfer, void* user_data);
@@ -105,6 +109,7 @@ bool emu_init(void)
     init_debug();
     gearboy = new GearboyCore();
     gearboy->Init();
+    gearboy->SetBarcodeBoyMode((GB_BarcodeBoyMode)config_emulator.barcode_boy_mode);
 
     link_cable_manager = new LinkCableManager();
     link_cable_manager->SetNormalBarrierStallUs((u32)config_emulator.link_cable_stall_us);
@@ -117,12 +122,14 @@ bool emu_init(void)
     audio_buffer = new s16[AUDIO_BUFFER_SIZE];
     for (int i = 0; i < AUDIO_BUFFER_SIZE; i++)
         audio_buffer[i] = 0;
-    audio_enabled = true;
     emu_audio_sync = true;
+    emu_audio_rate_control = false;
+    emu_audio_ratio = 1.0f;
     emu_debug_disable_breakpoints = false;
     emu_debug_irq_breakpoints = false;
     emu_debug_step_frames_pending = 0;
     emu_frame_counter = 0;
+    emu_video_frame_counter = 0;
     emu_debug_background_tile_address = -1;
     emu_debug_background_map_address = -1;
     emu_debug_tile_dmg_palette = 0;
@@ -158,6 +165,7 @@ void emu_destroy(void)
     }
     loading_state.store(Loading_State_None);
 
+    emu_stop_video_recording();
     save_ram();
     rewind_destroy();
     runahead_destroy();
@@ -188,21 +196,11 @@ void emu_destroy(void)
     }
 }
 
-void emu_load_rom(const char* file_path, bool force_dmg, Cartridge::CartridgeTypes mbc, bool force_gba)
-{
-    gui_debug_trace_logger_reset();
-    emu_audio_reset();
-    save_ram();
-    gearboy->SetSGBEnabled(config_emulator.sgb);
-    gearboy->LoadROM(file_path, force_dmg, mbc, force_gba, config_emulator.softpatching);
-    load_ram();
-    rewind_reset();
-    emu_debug_continue();
-}
-
 static void load_rom_thread_func(void)
 {
     gearboy->SetSGBEnabled(config_emulator.sgb);
+    gearboy->SetSGBAllGames(config_emulator.sgb_all_games);
+    gearboy->SetBarcodeBoyMode((GB_BarcodeBoyMode)config_emulator.barcode_boy_mode);
     loading_result = gearboy->LoadROM(loading_file_path, loading_force_dmg, loading_mbc,
         loading_force_gba, loading_softpatching);
     loading_state.store(Loading_State_Finished);
@@ -213,9 +211,10 @@ void emu_load_rom_async(const char* file_path, bool force_dmg, Cartridge::Cartri
     if (loading_state.load() != Loading_State_None)
         return;
 
-    gui_debug_trace_logger_reset();
+    gui_debug_trace_logger_reset("media_change");
 
     emu_debug_command = Debug_Command_None;
+    emu_debug_step_frames_pending = 0;
     reset_buffers();
     save_ram();
 
@@ -310,6 +309,7 @@ void emu_update(void)
         {
             if (!rewind_pop())
                 break;
+            emu_video_frame_counter++;
         }
 
         int silence_count = GB_AUDIO_QUEUE_SIZE;
@@ -351,7 +351,10 @@ void emu_update(void)
         }
 
         if (breakpoint_hit)
+        {
             emu_debug_command = Debug_Command_None;
+            emu_debug_step_frames_pending = 0;
+        }
 
         if (emu_debug_command == Debug_Command_StepFrame && emu_debug_step_frames_pending > 0)
         {
@@ -386,7 +389,10 @@ void emu_update(void)
     if (frame_executed)
     {
         if (frame_completed)
+        {
             emu_frame_counter++;
+            emu_video_frame_counter++;
+        }
         rewind_push();
     }
 
@@ -395,12 +401,24 @@ void emu_update(void)
         GB_RuntimeInfo rt_info;
         gearboy->GetRuntimeInfo(rt_info);
         generate_24bit_buffer(emu_frame_buffer, frame_buffer_565, rt_info.screen_width * rt_info.screen_height);
+
+        if (video_recorder_is_recording())
+        {
+            video_recorder_add_audio(audio_buffer, sampleCount);
+            if (frame_completed)
+            {
+                if (video_recording_output)
+                    emu_video_recording_frame_pending = true;
+                else
+                    video_recorder_add_video((const u8*)emu_frame_buffer, rt_info.screen_width, rt_info.screen_height, 3);
+            }
+        }
     }
 
     if ((sampleCount > 0) && !gearboy->IsPaused())
     {
         bool sync_audio = emu_audio_sync && (!emu_link_cable_is_active() || link_cable_manager->IsPacingPeer());
-        sound_queue_write(audio_buffer, sampleCount, sync_audio);
+        sound_queue_write(audio_buffer, sampleCount, sync_audio, emu_audio_rate_control, emu_audio_ratio, !emu_audio_sync);
     }
     else if (gearboy->IsPaused())
     {
@@ -460,14 +478,14 @@ static int get_rewind_pop_budget(void)
     return to_pop;
 }
 
-void emu_key_pressed(Gameboy_Keys key)
+void emu_key_pressed(Gameboy_Keys key, int player)
 {
-    gearboy->KeyPressed(key);
+    gearboy->KeyPressed(key, player);
 }
 
-void emu_key_released(Gameboy_Keys key)
+void emu_key_released(Gameboy_Keys key, int player)
 {
-    gearboy->KeyReleased(key);
+    gearboy->KeyReleased(key, player);
 }
 
 void emu_pause(void)
@@ -496,9 +514,14 @@ bool emu_is_empty(void)
     return !gearboy->GetCartridge()->IsLoadedROM();
 }
 
-void emu_reset(bool force_dmg, Cartridge::CartridgeTypes mbc, bool force_gba)
+void emu_save_persistent_data(void)
 {
-    gui_debug_trace_logger_reset();
+    save_ram();
+}
+
+void emu_reset(bool force_dmg, Cartridge::CartridgeTypes mbc, bool force_gba, bool save_persistent_data)
+{
+    gui_debug_trace_logger_reset("reset");
     emu_debug_command = Debug_Command_None;
     emu_debug_step_frames_pending = 0;
     emu_debug_pc_changed = true;
@@ -506,8 +529,10 @@ void emu_reset(bool force_dmg, Cartridge::CartridgeTypes mbc, bool force_gba)
     reset_buffers();
     reset_rewind_timing();
     emu_audio_reset();
-    save_ram();
+    if (save_persistent_data)
+        emu_save_persistent_data();
     gearboy->SetSGBEnabled(config_emulator.sgb);
+    gearboy->SetSGBAllGames(config_emulator.sgb_all_games);
     gearboy->ResetROM(force_dmg, mbc, force_gba);
     load_ram();
     rewind_reset();
@@ -515,13 +540,11 @@ void emu_reset(bool force_dmg, Cartridge::CartridgeTypes mbc, bool force_gba)
 
 void emu_audio_volume(float volume)
 {
-    audio_enabled = (volume > 0.0f);
     gearboy->SetSoundVolume(volume);
 }
 
 void emu_audio_mute(bool mute)
 {
-    audio_enabled = !mute;
     gearboy->SetSoundMute(mute);
 }
 
@@ -532,13 +555,16 @@ void emu_audio_set_master_volume(float volume)
 
 void emu_audio_reset(void)
 {
-    sound_queue_stop();
-    sound_queue_start(GB_AUDIO_SAMPLE_RATE, 2, GB_AUDIO_QUEUE_SIZE, config_audio.buffer_count);
+    if (sound_queue_is_open())
+        sound_queue_flush();
+    else
+        emu_audio_restart();
 }
 
-bool emu_is_audio_enabled(void)
+void emu_audio_restart(void)
 {
-    return audio_enabled;
+    sound_queue_stop();
+    sound_queue_start(GB_AUDIO_SAMPLE_RATE, 2, GB_AUDIO_QUEUE_SIZE, config_audio.buffer_count);
 }
 
 bool emu_is_audio_open(void)
@@ -609,9 +635,10 @@ void emu_load_ram(const char* file_path, bool force_dmg, Cartridge::CartridgeTyp
     if (!emu_is_empty())
     {
         emu_link_cable_stop();
-        gui_debug_trace_logger_reset();
+        gui_debug_trace_logger_reset("media_change");
         save_ram();
         gearboy->SetSGBEnabled(config_emulator.sgb);
+        gearboy->SetSGBAllGames(config_emulator.sgb_all_games);
         gearboy->ResetROM(force_dmg, mbc, force_gba);
         gearboy->LoadRam(file_path, true);
         rewind_reset();
@@ -632,17 +659,22 @@ static const char* get_configurated_dir(int option, const char* path)
     }
 }
 
-void emu_save_state_slot(int index)
+bool emu_save_state_slot(int index)
 {
     if (!emu_is_empty())
     {
         const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
-        gearboy->SaveState(dir, index, true);
-        update_savestates_data();
+        if (gearboy->SaveState(dir, index, true))
+        {
+            update_savestates_data();
+            return true;
+        }
     }
+
+    return false;
 }
 
-void emu_load_state_slot(int index)
+bool emu_load_state_slot(int index)
 {
     if (!emu_is_empty())
     {
@@ -650,35 +682,52 @@ void emu_load_state_slot(int index)
         const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
         if (gearboy->LoadState(dir, index, false))
         {
+            emu_debug_state_restored();
             events_sync_input();
             rewind_reset();
+            return true;
         }
     }
+
+    return false;
 }
 
-void emu_save_state_file(const char* file_path)
+bool emu_save_state_file(const char* file_path)
 {
-    if (!emu_is_empty()) {
-        gearboy->SaveState(file_path, -1, true);
-    }
+    if (emu_is_empty())
+        return false;
+
+    return gearboy->SaveState(file_path, -1, true);
 }
 
-void emu_load_state_file(const char* file_path)
+bool emu_load_state_file(const char* file_path)
 {
-    if (!emu_is_empty())
-    {
-        emu_link_cable_stop();
-        if (gearboy->LoadState(file_path, -1, false))
-        {
-            events_sync_input();
-            rewind_reset();
-        }
-    }
+    if (emu_is_empty())
+        return false;
+
+    emu_link_cable_stop();
+
+    if (!gearboy->LoadState(file_path, -1, false))
+        return false;
+
+    emu_debug_state_restored();
+    events_sync_input();
+    rewind_reset();
+    return true;
 }
 
 void update_savestates_data(void)
 {
     emu_savestates_generation++;
+
+    for (int i = 0; i < 5; i++)
+    {
+        emu_savestates[i].rom_name[0] = 0;
+        SafeDeleteArray(emu_savestates_screenshots[i].data);
+        emu_savestates_screenshots[i].width = 0;
+        emu_savestates_screenshots[i].height = 0;
+        emu_savestates_screenshots[i].size = 0;
+    }
 
     if (emu_is_empty())
         return;
@@ -687,12 +736,6 @@ void update_savestates_data(void)
 
     for (int i = 0; i < 5; i++)
     {
-        emu_savestates[i].rom_name[0] = 0;
-        SafeDeleteArray(emu_savestates_screenshots[i].data);
-        emu_savestates_screenshots[i].size = 0;
-        emu_savestates_screenshots[i].width = 0;
-        emu_savestates_screenshots[i].height = 0;
-
         if (!gearboy->GetSaveStateHeader(i + 1, dir, &emu_savestates[i]))
             continue;
 
@@ -700,7 +743,11 @@ void update_savestates_data(void)
         {
             emu_savestates_screenshots[i].data = new u8[emu_savestates[i].screenshot_size];
             emu_savestates_screenshots[i].size = emu_savestates[i].screenshot_size;
-            gearboy->GetSaveStateScreenshot(i + 1, dir, &emu_savestates_screenshots[i]);
+            bool loaded = gearboy->GetSaveStateScreenshot(i + 1, dir, &emu_savestates_screenshots[i]);
+            size_t expected_size = (size_t)emu_savestates_screenshots[i].width * emu_savestates_screenshots[i].height * 3;
+
+            if (!loaded || (emu_savestates_screenshots[i].size != expected_size))
+                SafeDeleteArray(emu_savestates_screenshots[i].data);
         }
     }
 }
@@ -758,8 +805,17 @@ void emu_video_no_sprite_limit(bool enabled)
     gearboy->GetVideo()->SetNoSpriteLimit(enabled);
 }
 
+void emu_debug_state_restored(void)
+{
+    emu_get_core()->GetProcessor()->ResetDebuggerExecutionState();
+    emu_debug_command = Debug_Command_None;
+    emu_debug_step_frames_pending = 0;
+    emu_debug_pc_changed = true;
+}
+
 void emu_debug_step_over(void)
 {
+    emu_debug_step_frames_pending = 0;
     Processor* processor = emu_get_core()->GetProcessor();
     Processor::ProcessorState* proc_state = processor->GetState();
     Memory* memory = emu_get_core()->GetMemory();
@@ -788,6 +844,7 @@ void emu_debug_step_into(void)
 
 void emu_debug_step_out(void)
 {
+    emu_debug_step_frames_pending = 0;
     Processor* processor = emu_get_core()->GetProcessor();
     std::stack<Processor::GB_CallStackEntry>* call_stack = processor->GetDisassemblerCallStack();
 
@@ -825,9 +882,9 @@ void emu_debug_step_frames(int frames)
 void emu_debug_break(void)
 {
     gearboy->Pause(false);
+    emu_debug_step_frames_pending = 0;
     if (emu_debug_command == Debug_Command_Continue || emu_debug_command == Debug_Command_StepFrame)
     {
-        emu_debug_step_frames_pending = 0;
         emu_debug_command = Debug_Command_Step;
     }
 }
@@ -835,6 +892,7 @@ void emu_debug_break(void)
 void emu_debug_continue(void)
 {
     gearboy->Pause(false);
+    emu_debug_step_frames_pending = 0;
     emu_debug_command = Debug_Command_Continue;
 }
 
@@ -858,6 +916,11 @@ void emu_load_bootrom_gbc(const char* file_path)
     gearboy->GetMemory()->LoadBootromGBC(file_path);
 }
 
+void emu_load_sgb_bios(const char* file_path)
+{
+    gearboy->GetSGB()->LoadBIOS(file_path);
+}
+
 void emu_enable_bootrom_dmg(bool enable)
 {
     gearboy->GetMemory()->EnableBootromDMG(enable);
@@ -868,20 +931,21 @@ void emu_enable_bootrom_gbc(bool enable)
     gearboy->GetMemory()->EnableBootromGBC(enable);
 }
 
-void emu_save_screenshot(const char* file_path)
+bool emu_save_screenshot(const char* file_path)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM())
-        return;
+        return false;
     GB_RuntimeInfo rt_info;
     gearboy->GetRuntimeInfo(rt_info);
     Log("Saving screenshot to %s", file_path);
-    stbi_write_png(file_path, rt_info.screen_width, rt_info.screen_height, 3, emu_frame_buffer, rt_info.screen_width * 3);
+    return stbi_write_png(file_path, rt_info.screen_width, rt_info.screen_height, 3, emu_frame_buffer,
+        rt_info.screen_width * 3) != 0;
 }
 
-void emu_save_sprite(const char* file_path, int index)
+bool emu_save_sprite(const char* file_path, int index)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM())
-        return;
+        return false;
 
     update_debug_oam_buffers();
 
@@ -892,9 +956,11 @@ void emu_save_sprite(const char* file_path, int index)
 
     generate_24bit_buffer(emu_debug_oam_buffers[index], debug_oam_buffers_565[index], 8 * 16);
 
-    stbi_write_png(file_path, 8, height, 3, emu_debug_oam_buffers[index], 8 * 3);
+    if (!stbi_write_png(file_path, 8, height, 3, emu_debug_oam_buffers[index], 8 * 3))
+        return false;
 
     Log("Sprite saved to %s", file_path);
+    return true;
 }
 
 void emu_set_accelerometer(float x, float y, bool absolute)
@@ -914,23 +980,25 @@ void emu_set_accelerometer(float x, float y, bool absolute)
     gearboy->SetAccelerometer((double)tilt_x, (double)tilt_y);
 }
 
-void emu_save_background(const char* file_path)
+bool emu_save_background(const char* file_path)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM())
-        return;
+        return false;
 
     update_debug_background_buffer();
     generate_24bit_buffer(emu_debug_background_buffer, debug_background_buffer_565, 256 * 256);
 
-    stbi_write_png(file_path, 256, 256, 3, emu_debug_background_buffer, 256 * 3);
+    if (!stbi_write_png(file_path, 256, 256, 3, emu_debug_background_buffer, 256 * 3))
+        return false;
 
     Log("Background saved to %s", file_path);
+    return true;
 }
 
-void emu_save_tiles(const char* file_path)
+bool emu_save_tiles(const char* file_path)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM())
-        return;
+        return false;
 
     update_debug_tile_buffers();
 
@@ -948,17 +1016,21 @@ void emu_save_tiles(const char* file_path)
         memcpy(&combined[y * width * 2 + width], &emu_debug_tile_buffers[1][y * width], width * sizeof(GB_Color));
     }
 
-    stbi_write_png(file_path, width * 2, height, 3, combined, width * 2 * 3);
+    bool saved = stbi_write_png(file_path, width * 2, height, 3, combined, width * 2 * 3) != 0;
 
     delete[] combined;
 
+    if (!saved)
+        return false;
+
     Log("Tiles saved to %s", file_path);
+    return true;
 }
 
-void emu_save_sgb_border(const char* file_path)
+bool emu_save_sgb_border(const char* file_path)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM() || !gearboy->IsSGB())
-        return;
+        return false;
 
     SGB* sgb = gearboy->GetSGB();
     const SGB::Border* border = sgb->GetBorder();
@@ -1016,15 +1088,20 @@ void emu_save_sgb_border(const char* file_path)
         }
     }
 
-    stbi_write_png(file_path, w, h, 3, pixels, w * 3);
+    bool saved = stbi_write_png(file_path, w, h, 3, pixels, w * 3) != 0;
     SafeDeleteArray(pixels);
+
+    if (!saved)
+        return false;
+
     Log("SGB border saved to %s", file_path);
+    return true;
 }
 
-void emu_save_sgb_tiles(const char* file_path, int palette)
+bool emu_save_sgb_tiles(const char* file_path, int palette)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM() || !gearboy->IsSGB())
-        return;
+        return false;
 
     SGB* sgb = gearboy->GetSGB();
     const SGB::Border* border = sgb->GetBorder();
@@ -1075,15 +1152,20 @@ void emu_save_sgb_tiles(const char* file_path, int palette)
         }
     }
 
-    stbi_write_png(file_path, w, h, 3, pixels, w * 3);
+    bool saved = stbi_write_png(file_path, w, h, 3, pixels, w * 3) != 0;
     SafeDeleteArray(pixels);
+
+    if (!saved)
+        return false;
+
     Log("SGB tiles saved to %s", file_path);
+    return true;
 }
 
-void emu_start_vgm_recording(const char* file_path)
+bool emu_start_vgm_recording(const char* file_path)
 {
     if (!gearboy->GetCartridge()->IsLoadedROM())
-        return;
+        return false;
     if (gearboy->GetAudio()->IsVgmRecording())
         emu_stop_vgm_recording();
     VgmMetadata metadata;
@@ -1096,8 +1178,11 @@ void emu_start_vgm_recording(const char* file_path)
     metadata.game_name = gearboy->GetCartridge()->GetFileName();
     metadata.comment = "Created with " GEARBOY_TITLE " " GEARBOY_VERSION;
 
-    if (gearboy->GetAudio()->StartVgmRecording(file_path, GEARBOY_MASTER_CLOCK_RATE, false, metadata))
-        Log("VGM recording started: %s", file_path);
+    if (!gearboy->GetAudio()->StartVgmRecording(file_path, GEARBOY_MASTER_CLOCK_RATE, false, metadata))
+        return false;
+
+    Log("VGM recording started: %s", file_path);
+    return true;
 }
 
 void emu_stop_vgm_recording(void)
@@ -1112,6 +1197,80 @@ void emu_stop_vgm_recording(void)
 bool emu_is_vgm_recording(void)
 {
     return gearboy->GetAudio()->IsVgmRecording();
+}
+
+bool emu_start_video_recording(const char* file_path)
+{
+    if (!gearboy->GetCartridge()->IsLoadedROM())
+        return false;
+
+    if (video_recorder_is_recording())
+        emu_stop_video_recording();
+
+    GB_RuntimeInfo runtime;
+    gearboy->GetRuntimeInfo(runtime);
+
+    int width = 0;
+    int height = 0;
+    video_recording_output = ogl_renderer_get_output_size(&width, &height) && (width > 1) && (height > 1);
+    emu_video_recording_frame_pending = false;
+
+    if (video_recording_output)
+    {
+        width &= ~1;
+        height &= ~1;
+    }
+    else
+        get_video_recording_size(runtime, &width, &height);
+
+    if (!video_recorder_start(file_path, width, height, emu_get_frame_rate(), GB_AUDIO_SAMPLE_RATE, (Video_Recorder_Quality)config_video.recording_quality))
+        return false;
+
+    Log("Video recording started: %s (%dx%d%s)", file_path, width, height, video_recording_output ? ", shader output" : "");
+    return true;
+}
+
+void emu_stop_video_recording(void)
+{
+    if (video_recorder_is_recording())
+    {
+        video_recorder_stop();
+        Log("Video recording stopped");
+    }
+}
+
+bool emu_is_video_recording(void)
+{
+    return video_recorder_is_recording();
+}
+
+static void get_video_recording_size(const GB_RuntimeInfo& runtime, int* width, int* height)
+{
+    int selected_ratio = config_debug.debug ? 0 : config_video.ratio;
+    float ratio = 0.0f;
+
+    if (config_video.recording_ratio > 0)
+        selected_ratio = config_video.recording_ratio - 1;
+
+    switch (selected_ratio)
+    {
+        case 1:
+            ratio = 4.0f / 3.0f;
+            break;
+        case 2:
+            ratio = 16.0f / 9.0f;
+            break;
+        case 3:
+            ratio = 16.0f / 10.0f;
+            break;
+        default:
+            ratio = (float)runtime.screen_width / (float)runtime.screen_height;
+    }
+
+    *height = runtime.screen_height * config_video.recording_scale;
+    *width = (int)roundf((float)*height * ratio);
+    *width += *width & 1;
+    *height += *height & 1;
 }
 
 int emu_get_screenshot_png(unsigned char** out_buffer)
@@ -1139,7 +1298,7 @@ int emu_get_sprite_png(int sprite_index, unsigned char** out_buffer)
     if (sprite_index < 0 || sprite_index > 39)
         return 0;
 
-    update_debug();
+    update_debug_oam_buffers();
 
     Memory* memory = gearboy->GetMemory();
     u8 lcdc = memory->Retrieve(0xFF40);
@@ -1150,6 +1309,8 @@ int emu_get_sprite_png(int sprite_index, unsigned char** out_buffer)
 
     if (!buffer)
         return 0;
+
+    generate_24bit_buffer(buffer, debug_oam_buffers_565[sprite_index], 8 * 16);
 
     int len = 0;
     *out_buffer = stbi_write_png_to_mem((const unsigned char*)buffer, 8 * 3, 8, height, 3, &len);
@@ -1199,6 +1360,25 @@ void emu_mcp_pump_commands(void)
 {
     if (mcp_manager && mcp_manager->IsRunning())
         mcp_manager->PumpCommands(gearboy);
+}
+
+void emu_set_barcode_boy_mode(int mode)
+{
+    if (loading_state.load() != Loading_State_None)
+        return;
+
+    config_emulator.barcode_boy_mode = CLAMP(mode, 0, 2);
+
+    bool barcode_was_enabled = gearboy->IsBarcodeBoyEnabled();
+    gearboy->SetBarcodeBoyMode((GB_BarcodeBoyMode)config_emulator.barcode_boy_mode);
+
+    if (barcode_was_enabled != gearboy->IsBarcodeBoyEnabled())
+        rewind_reset();
+}
+
+GB_BarcodeBoyResult emu_scan_barcode(const char* barcode)
+{
+    return emu_is_empty() ? GB_BarcodeBoyResult_Unavailable : gearboy->ScanBarcode(barcode);
 }
 
 bool emu_link_cable_connect(int session)
@@ -1275,7 +1455,7 @@ void emu_link_cable_set_normal_barrier_stall_us(u32 stall_us)
         link_cable_manager->SetNormalBarrierStallUs(stall_us);
 }
 
-static void link_cable_state_callback(u64 cycle, u8 sb, u8 sc, void* user_data)
+static void link_cable_state_callback(u64 cycle, u8 sb, u8 sc, GB_SerialEvent, void* user_data)
 {
     LinkCableManager* manager = (LinkCableManager*)user_data;
 
@@ -1394,6 +1574,28 @@ static const char* get_mbc(Cartridge::CartridgeTypes type)
             return "Bung/EMS";
         case Cartridge::CartridgePoke2in1:
             return "Poke 2-in-1";
+        case Cartridge::CartridgeRocket:
+            return "Rocket Games";
+        case Cartridge::CartridgeBHGOS:
+            return "BHGOS";
+        case Cartridge::CartridgeLiCheng:
+            return "Li Cheng";
+        case Cartridge::CartridgeNTNew:
+            return "NT newer";
+        case Cartridge::CartridgeGGB81:
+            return "GGB81";
+        case Cartridge::CartridgeHitek:
+            return "Hitek";
+        case Cartridge::CartridgeVF001:
+            return "VF001";
+        case Cartridge::CartridgeVF001A:
+            return "VF001 (SL)";
+        case Cartridge::CartridgeSintax:
+            return "Sintax";
+        case Cartridge::CartridgeNTOld1:
+            return "NT old 1";
+        case Cartridge::CartridgeNTOld2:
+            return "NT old 2";
         case Cartridge::CartridgeNotSupported:
             return "Not Supported";
         default:
@@ -1403,6 +1605,7 @@ static const char* get_mbc(Cartridge::CartridgeTypes type)
 
 static void debug_step_instruction(void)
 {
+    emu_debug_step_frames_pending = 0;
     emu_debug_command = Debug_Command_Step;
     gearboy->Pause(false);
 }

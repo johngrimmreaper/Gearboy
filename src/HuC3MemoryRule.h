@@ -36,8 +36,7 @@ struct HuC3_RTC
 class HuC3MemoryRule : public MemoryRule
 {
 public:
-    HuC3MemoryRule(Processor* pProcessor, Memory* pMemory,
-            Video* pVideo, Input* pInput, Cartridge* pCartridge, Audio* pAudio);
+    HuC3MemoryRule(Memory* pMemory, Cartridge* pCartridge);
     virtual ~HuC3MemoryRule();
     virtual u8 PerformRead(u16 address);
     virtual void PerformWrite(u16 address, u8 value);
@@ -55,7 +54,7 @@ public:
     virtual int GetCurrentRomBank1Index();
     virtual u8* GetRTCMemory();
     virtual void SaveState(std::ostream& stream);
-    virtual void LoadState(std::istream& stream);
+    virtual void LoadState(std::istream& stream, u32 version = GB_SAVESTATE_VERSION);
 
 private:
     void UpdateRTC();

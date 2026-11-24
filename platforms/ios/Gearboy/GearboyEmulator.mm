@@ -148,6 +148,28 @@ static Cartridge::CartridgeTypes MapperForOption(NSInteger option)
             return Cartridge::CartridgePoke2in1;
         case 20:
             return Cartridge::CartridgeMBC6;
+        case 21:
+            return Cartridge::CartridgeRocket;
+        case 22:
+            return Cartridge::CartridgeBHGOS;
+        case 23:
+            return Cartridge::CartridgeLiCheng;
+        case 24:
+            return Cartridge::CartridgeNTNew;
+        case 25:
+            return Cartridge::CartridgeGGB81;
+        case 26:
+            return Cartridge::CartridgeHitek;
+        case 27:
+            return Cartridge::CartridgeVF001;
+        case 28:
+            return Cartridge::CartridgeVF001A;
+        case 29:
+            return Cartridge::CartridgeSintax;
+        case 30:
+            return Cartridge::CartridgeNTOld1;
+        case 31:
+            return Cartridge::CartridgeNTOld2;
         default:
             return Cartridge::CartridgeNotSupported;
     }
@@ -203,6 +225,7 @@ static Cartridge::CartridgeTypes MapperForOption(NSInteger option)
     {
         m_core = new GearboyCore();
         m_core->Init(GB_PIXEL_RGB565);
+        m_core->SetBarcodeBoyMode(GB_BarcodeBoyMode_Disabled);
         m_core->SetSoundSampleRate(GB_AUDIO_SAMPLE_RATE);
 
         m_frameBuffer = new u16[SGB_SCREEN_WIDTH * SGB_SCREEN_HEIGHT]();

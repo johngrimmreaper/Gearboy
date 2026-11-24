@@ -24,7 +24,15 @@
 #include <string>
 #include "gearboy.h"
 
-static const int config_version = 7;
+#if defined(__APPLE__)
+#define CONFIG_PRIMARY_KMOD SDL_KMOD_GUI
+#define CONFIG_PRIMARY_LABEL "Cmd+"
+#else
+#define CONFIG_PRIMARY_KMOD SDL_KMOD_CTRL
+#define CONFIG_PRIMARY_LABEL "Ctrl+"
+#endif
+
+static const int config_version = 9;
 static const int config_minimum_version = 2;
 static const int config_max_recent_roms = 15;
 static const int config_max_custom_palettes = 5;
@@ -66,6 +74,7 @@ struct config_Emulator
     bool force_gba;
     bool sgb;
     bool sgb_border;
+    bool sgb_all_games;
     bool ffwd;
     int ffwd_speed;
     int runahead;
@@ -76,19 +85,23 @@ struct config_Emulator
     std::string dmg_bootrom_path;
     bool gbc_bootrom;
     std::string gbc_bootrom_path;
+    std::string sgb_bios_path;
     int savefiles_dir_option;
     std::string savefiles_path;
     int savestates_dir_option;
     std::string savestates_path;
     int screenshots_dir_option;
+    int video_recordings_dir_option;
     std::string screenshots_path;
-    std::string last_open_path;
+    std::string video_recordings_path;
     int window_width;
     int window_height;
-    bool status_messages;
+    bool show_notifications;
+    int notification_duration;
     bool allow_screensaver;
     int mcp_tcp_port;
     std::string mcp_http_address;
+    int barcode_boy_mode;
     int link_cable_session;
     int link_cable_stall_us;
     int tilt_source;
@@ -107,6 +120,18 @@ struct config_Emulator
     bool capture_mouse;
 };
 
+struct config_FileDialogs
+{
+    std::string rom;
+    std::string ram;
+    std::string states;
+    std::string screenshots;
+    std::string recordings;
+    std::string debug;
+    std::string bios;
+    std::string cheats;
+};
+
 struct config_Video
 {
     int scale;
@@ -122,6 +147,9 @@ struct config_Video
     float background_color_debugger[config_Theme_Count][3];
     int shader_mode;
     std::string shader_preset_path;
+    int recording_scale;
+    int recording_ratio;
+    int recording_quality;
 };
 
 struct config_Audio
@@ -152,6 +180,7 @@ struct config_Input
     SDL_Scancode key_select;
 
     bool allow_up_down;
+    bool allow_shared_gamepads;
     bool gamepad;
     int gamepad_directional;
     bool gamepad_invert_x_axis;
@@ -194,6 +223,8 @@ enum config_HotkeyIndex
     config_HotkeyIndex_SelectSlot4,
     config_HotkeyIndex_SelectSlot5,
     config_HotkeyIndex_Mute,
+    config_HotkeyIndex_ScanBarcode,
+    config_HotkeyIndex_VideoRecording,
     config_HotkeyIndex_COUNT
 };
 
@@ -218,8 +249,8 @@ struct config_Debug
     bool show_call_stack;
     bool show_breakpoints;
     bool show_symbols;
+    bool show_profiler;
     bool show_memory;
-    bool show_video;
     bool show_video_nametable;
     bool show_video_tiles;
     bool show_video_sprites;
@@ -257,6 +288,8 @@ struct config_Debug
     int trace_apu_events;
     int trace_serial_events;
     int trace_mapper_events;
+    int trace_vblank_watch_address;
+    int trace_vblank_watch_operation;
     int trace_output;
     int trace_capacity;
     int trace_disk_dir_option;
@@ -272,6 +305,7 @@ struct config_Debug
     bool dis_replace_labels;
     int dis_syntax;
     int dis_look_ahead_count;
+    int font_type;
     int font_size;
     int scale;
     bool multi_viewport;
@@ -285,6 +319,7 @@ struct config_Debug
 };
 
 EXTERN config_Emulator config_emulator;
+EXTERN config_FileDialogs config_file_dialogs;
 EXTERN config_Video config_video;
 EXTERN config_Audio config_audio;
 EXTERN config_Rewind config_rewind;

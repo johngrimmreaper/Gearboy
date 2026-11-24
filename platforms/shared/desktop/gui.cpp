@@ -19,6 +19,7 @@
 
 #include <math.h>
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "implot.h"
 #include "fonts/RobotoMedium.h"
 #include "fonts/MaterialIcons.h"
@@ -34,28 +35,30 @@
 #include "gui.h"
 #include "gui_cheats.h"
 #include "gui_menus.h"
+#include "gui_shader.h"
 #include "gui_popups.h"
 #include "gui_actions.h"
+#include "gui_notifications.h"
+#include "gui_colors.h"
 #include "gui_debug_disassembler.h"
 #include "gui_debug_memory.h"
 #include "gui_debug.h"
 
-static bool status_message_active = false;
-static char status_message[4096] = "";
-static Uint64 status_message_start_time = 0;
-static Uint64 status_message_duration = 0;
 static bool error_window_active = false;
 static char error_message[4096] = "";
 static bool loading_rom_active = false;
+static int pending_state_slot = 0;
+static std::string pending_state_path;
 static char loading_rom_path[4096] = "";
 static char loading_symbol_path[4096] = "";
 
 
 static void main_window(void);
-static void show_status_message(void);
 static void show_error_window(void);
 static void show_loading_popup(void);
+static void select_save_slot(int slot);
 static bool finish_loading_rom(void);
+static void load_pending_state(void);
 static void update_window_visibility_padding(void);
 static void set_style(void);
 static void set_style_light(ImGuiStyle& style);
@@ -100,40 +103,53 @@ bool gui_init(void)
     for (int i = 0; i < 4; i++)
     {
         font_cfg.SizePixels = (13.0f + (i * 3));
-        gui_default_fonts[i] = io.Fonts->AddFontDefault(&font_cfg);
+        font_cfg.GlyphMinAdvanceX = font_cfg.SizePixels * 7.0f / 13.0f;
+        font_cfg.GlyphMaxAdvanceX = font_cfg.GlyphMinAdvanceX;
+        gui_default_fonts[0][i] = io.Fonts->AddFontDefaultVector(&font_cfg);
+        gui_default_fonts[1][i] = io.Fonts->AddFontDefaultBitmap(&font_cfg);
     }
 
-    gui_default_font = gui_default_fonts[config_debug.font_size];
-
-    set_style();
-
-    emu_audio_mute(!config_audio.enable);
-    emu_audio_set_master_volume(config_audio.master_volume);
-
-    strncpy_fit(gui_dmg_bootrom_path, config_emulator.dmg_bootrom_path.c_str(), sizeof(gui_dmg_bootrom_path));
-    strncpy_fit(gui_gbc_bootrom_path, config_emulator.gbc_bootrom_path.c_str(), sizeof(gui_gbc_bootrom_path));
+    gui_apply_settings();
 
     if (strlen(gui_dmg_bootrom_path) > 0)
         emu_load_bootrom_dmg(gui_dmg_bootrom_path);
     if (strlen(gui_gbc_bootrom_path) > 0)
         emu_load_bootrom_gbc(gui_gbc_bootrom_path);
-
-    emu_enable_bootrom_dmg(config_emulator.dmg_bootrom);
-    emu_enable_bootrom_gbc(config_emulator.gbc_bootrom);
-    emu_color_correction(config_video.color_correction);
-    emu_video_no_sprite_limit(config_video.sprite_limit);
-    emu_set_disassembler_syntax(config_debug.dis_syntax);
-
-    strncpy_fit(gui_savefiles_path, config_emulator.savefiles_path.c_str(), sizeof(gui_savefiles_path));
-    strncpy_fit(gui_savestates_path, config_emulator.savestates_path.c_str(), sizeof(gui_savestates_path));
-    strncpy_fit(gui_screenshots_path, config_emulator.screenshots_path.c_str(), sizeof(gui_screenshots_path));
-    strncpy_fit(gui_mcp_http_address, config_emulator.mcp_http_address.c_str(), sizeof(gui_mcp_http_address));
+    if (strlen(gui_sgb_bios_path) > 0)
+        emu_load_sgb_bios(gui_sgb_bios_path);
 
     gui_debug_init();
     gui_cheats_init();
     gui_init_menus();
 
     return true;
+}
+
+void gui_apply_settings(void)
+{
+    gui_default_font = gui_default_fonts[config_debug.font_type][config_debug.font_size];
+    set_style();
+
+    emu_audio_sync = config_audio.sync;
+    emu_audio_mute(!config_audio.enable);
+    emu_audio_set_master_volume(config_audio.master_volume);
+
+    emu_enable_bootrom_dmg(config_emulator.dmg_bootrom);
+    emu_enable_bootrom_gbc(config_emulator.gbc_bootrom);
+    emu_color_correction(config_video.color_correction);
+    emu_video_no_sprite_limit(config_video.sprite_limit);
+    emu_set_disassembler_syntax(config_debug.dis_syntax);
+    emu_set_barcode_boy_mode(config_emulator.barcode_boy_mode);
+    emu_link_cable_set_normal_barrier_stall_us((u32)config_emulator.link_cable_stall_us);
+
+    strncpy_fit(gui_savefiles_path, config_emulator.savefiles_path.c_str(), sizeof(gui_savefiles_path));
+    strncpy_fit(gui_savestates_path, config_emulator.savestates_path.c_str(), sizeof(gui_savestates_path));
+    strncpy_fit(gui_screenshots_path, config_emulator.screenshots_path.c_str(), sizeof(gui_screenshots_path));
+    strncpy_fit(gui_video_recordings_path, config_emulator.video_recordings_path.c_str(), sizeof(gui_video_recordings_path));
+    strncpy_fit(gui_dmg_bootrom_path, config_emulator.dmg_bootrom_path.c_str(), sizeof(gui_dmg_bootrom_path));
+    strncpy_fit(gui_gbc_bootrom_path, config_emulator.gbc_bootrom_path.c_str(), sizeof(gui_gbc_bootrom_path));
+    strncpy_fit(gui_sgb_bios_path, config_emulator.sgb_bios_path.c_str(), sizeof(gui_sgb_bios_path));
+    strncpy_fit(gui_mcp_http_address, config_emulator.mcp_http_address.c_str(), sizeof(gui_mcp_http_address));
 }
 
 void gui_destroy(void)
@@ -164,12 +180,13 @@ void gui_render(void)
 
     gui_debug_windows();
     gui_cheats_window();
+    gui_shader_parameters_window();
 
     if (config_emulator.show_info)
         gui_show_info();
 
     show_loading_popup();
-    show_status_message();
+    gui_notifications_render();
     show_error_window();
 
     ImGui::Render();
@@ -198,47 +215,46 @@ void gui_shortcut(gui_ShortCutEvent event)
     case gui_ShortcutMute:
         config_audio.enable = !config_audio.enable;
         emu_audio_mute(!config_audio.enable);
+        gui_notify(gui_NotificationInfo, config_audio.enable ? ICON_MD_VOLUME_UP : ICON_MD_VOLUME_OFF,
+            config_audio.enable ? "Audio unmuted" : "Audio muted", NULL, "mute", gui_NotificationDurationShort);
         break;
     case gui_ShortcutSaveState:
-    {
-        std::string message("Saving state to slot ");
-        message += std::to_string(config_emulator.save_slot + 1);
-        gui_set_status_message(message.c_str(), 3000);
-        emu_save_state_slot(config_emulator.save_slot + 1);
+        gui_action_save_state(NULL);
         break;
-    }
     case gui_ShortcutLoadState:
-    {
-        std::string message("Loading state from slot ");
-        message += std::to_string(config_emulator.save_slot + 1);
-        gui_set_status_message(message.c_str(), 3000);
-        emu_load_state_slot(config_emulator.save_slot + 1);
+        gui_action_load_state(NULL);
         break;
-    }
     case gui_ShortcutSelectSlot1:
-        config_emulator.save_slot = 0;
+        select_save_slot(0);
         break;
     case gui_ShortcutSelectSlot2:
-        config_emulator.save_slot = 1;
+        select_save_slot(1);
         break;
     case gui_ShortcutSelectSlot3:
-        config_emulator.save_slot = 2;
+        select_save_slot(2);
         break;
     case gui_ShortcutSelectSlot4:
-        config_emulator.save_slot = 3;
+        select_save_slot(3);
         break;
     case gui_ShortcutSelectSlot5:
-        config_emulator.save_slot = 4;
+        select_save_slot(4);
         break;
     case gui_ShortcutScreenshot:
         gui_action_save_screenshot(NULL);
         break;
+    case gui_ShortcutVideoRecording:
+        gui_action_toggle_video_recording();
+        break;
     case gui_ShortcutFullscreen:
+        if (emu_is_video_recording())
+            break;
         config_emulator.fullscreen = !config_emulator.fullscreen;
         application_trigger_fullscreen(config_emulator.fullscreen);
         break;
     case gui_ShortcutCaptureMouse:
         config_emulator.capture_mouse = !config_emulator.capture_mouse;
+        gui_notify(gui_NotificationInfo, ICON_MD_MOUSE,
+            config_emulator.capture_mouse ? "Mouse captured" : "Mouse released", NULL, "mouse", gui_NotificationDurationShort);
         break;
     case gui_ShortcutDebugStepOver:
         if (config_debug.debug)
@@ -289,6 +305,9 @@ void gui_shortcut(gui_ShortCutEvent event)
         break;
     case gui_ShortcutShowMainMenu:
         config_emulator.always_show_menu = !config_emulator.always_show_menu;
+        break;
+    case gui_ShortcutScanBarcode:
+        gui_shortcut_scan_barcode = true;
         break;
     default:
         break;
@@ -343,24 +362,44 @@ bool gui_finish_loading_rom(void)
         gui_set_error_message(message.c_str());
     }
 
+    load_pending_state();
     return success;
 }
 
-void gui_set_status_message(const char* message, Uint64 milliseconds)
+void gui_load_state_after_media(int slot, const char* path)
 {
-    if (config_emulator.status_messages)
-    {
-        strncpy_fit(status_message, message, sizeof(status_message));
-        status_message_active = true;
-        status_message_start_time = SDL_GetTicks();
-        status_message_duration = milliseconds;
-    }
+    pending_state_slot = slot;
+    pending_state_path = IsValidPointer(path) ? path : "";
+
+    if (!loading_rom_active)
+        load_pending_state();
 }
 
 void gui_set_error_message(const char* message)
 {
     strncpy_fit(error_message, message, sizeof(error_message));
     error_window_active = true;
+}
+
+void gui_center_next_window(void)
+{
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+}
+
+bool gui_has_open_window(void)
+{
+    ImGuiContext* context = ImGui::GetCurrentContext();
+
+    for (int i = 0; i < context->Windows.Size; i++)
+    {
+        ImGuiWindow* window = context->Windows[i];
+
+        if (window->Active && (window->Flags & ImGuiWindowFlags_NoTitleBar) == 0)
+            return true;
+    }
+
+    return false;
 }
 
 void gui_set_style(void)
@@ -411,6 +450,17 @@ Cartridge::CartridgeTypes gui_get_mbc(int index)
         case 18: return Cartridge::CartridgeBungEMS;
         case 19: return Cartridge::CartridgePoke2in1;
         case 20: return Cartridge::CartridgeMBC6;
+        case 21: return Cartridge::CartridgeRocket;
+        case 22: return Cartridge::CartridgeBHGOS;
+        case 23: return Cartridge::CartridgeLiCheng;
+        case 24: return Cartridge::CartridgeNTNew;
+        case 25: return Cartridge::CartridgeGGB81;
+        case 26: return Cartridge::CartridgeHitek;
+        case 27: return Cartridge::CartridgeVF001;
+        case 28: return Cartridge::CartridgeVF001A;
+        case 29: return Cartridge::CartridgeSintax;
+        case 30: return Cartridge::CartridgeNTOld1;
+        case 31: return Cartridge::CartridgeNTOld2;
         default: return Cartridge::CartridgeNotSupported;
     }
 }
@@ -554,7 +604,8 @@ static void main_window(void)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar;
-    
+    bool window_visible = false;
+
     if (config_debug.debug)
     {
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
@@ -562,7 +613,7 @@ static void main_window(void)
         ImGui::SetNextWindowPos(ImVec2(631, 26), ImGuiCond_FirstUseEver);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
-        ImGui::Begin("Output###debug_output", &config_debug.show_screen, flags);
+        window_visible = ImGui::Begin("Output###debug_output", &config_debug.show_screen, flags);
         gui_main_window_hovered = ImGui::IsWindowHovered();
     }
     else
@@ -579,13 +630,11 @@ static void main_window(void)
 
         flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-        ImGui::Begin(GEARBOY_TITLE, 0, flags);
+        window_visible = ImGui::Begin(GEARBOY_TITLE, 0, flags);
         gui_main_window_hovered = ImGui::IsWindowHovered();
     }
 
     OglRendererScreenGeometry screen_geometry;
-    screen_geometry.logical_width = image_logical_width;
-    screen_geometry.logical_height = image_logical_height;
     screen_geometry.physical_width = image_physical_width;
     screen_geometry.physical_height = image_physical_height;
     screen_geometry.framebuffer_scale_x = framebuffer_scale_x;
@@ -596,10 +645,35 @@ static void main_window(void)
     float tex_v = 1.0f;
     ogl_renderer_get_screen_uv(&tex_h, &tex_v);
 
-    ImGui::Image((ImTextureID)(intptr_t)ogl_renderer_get_screen_texture(), ImVec2(image_w, image_h), ImVec2(0, 0), ImVec2(tex_h, tex_v));
+    ImVec2 image_size(image_w, image_h);
+    ImVec2 layout_max = ImGui::GetCursorScreenPos() + image_size;
+    ImVec2 image_min = gui_snap_to_physical_pixel(ImGui::GetCursorScreenPos());
+    ImVec2 image_max = image_min + image_size;
 
-    if (config_video.fps)
-        gui_show_fps();
+    ImGui::Dummy(image_size);
+
+    if (window_visible)
+    {
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        ImVec2 clip_min = draw_list->GetClipRectMin();
+        ImVec2 clip_max = draw_list->GetClipRectMax();
+
+        if (!ImGui::IsWindowDocked())
+        {
+            if (clip_max.x > layout_max.x - 1.0f)
+                clip_max.x = fmaxf(clip_max.x, image_max.x);
+            if (clip_max.y > layout_max.y - 1.0f)
+                clip_max.y = fmaxf(clip_max.y, image_max.y);
+        }
+
+        draw_list->PushClipRect(clip_min, clip_max, false);
+        draw_list->AddImage((ImTextureID)(intptr_t)ogl_renderer_get_screen_texture(), image_min, image_max, ImVec2(0, 0), ImVec2(tex_h, tex_v));
+        draw_list->PopClipRect();
+        gui_notifications_render_output(image_min, image_max);
+
+        if (config_video.fps)
+            gui_show_fps(image_min, image_max);
+    }
 
     ImGui::End();
 
@@ -608,37 +682,18 @@ static void main_window(void)
     ImGui::PopStyleVar();
 }
 
-static void show_status_message(void)
+ImVec2 gui_snap_to_physical_pixel(const ImVec2& pos)
 {
-    if (status_message_active)
-    {
-        Uint64 current_time = SDL_GetTicks();
-        if ((current_time - status_message_start_time) > status_message_duration)
-            status_message_active = false;
-        else
-            ImGui::OpenPopup("Status");
-    }
+    ImGuiViewport* viewport = ImGui::GetWindowViewport();
+    ImVec2 scale = viewport->FramebufferScale;
 
-    if (status_message_active)
-    {
-        ImGui::SetNextWindowPos(ImVec2(0.0f, application_show_menu ? gui_main_menu_height : 0.0f));
-        ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 0.0f));
-        ImGui::SetNextWindowBgAlpha(0.9f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav;
+    if (scale.x <= 0.0f || scale.y <= 0.0f)
+        scale = ImGui::GetIO().DisplayFramebufferScale;
 
-        if (ImGui::BeginPopup("Status", flags))
-        {
-            ImGui::PushFont(gui_default_font);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f,0.9f,0.1f,1.0f));
-            ImGui::TextWrapped("%s", status_message);
-            ImGui::PopStyleColor();
-            ImGui::PopFont();
-            ImGui::EndPopup();
-        }
+    float x = ceilf(((pos.x - viewport->Pos.x) * scale.x) - 0.5f - 0.01f);
+    float y = ceilf(((pos.y - viewport->Pos.y) * scale.y) - 0.5f - 0.01f);
 
-        ImGui::PopStyleVar();
-    }
+    return ImVec2(viewport->Pos.x + (x / scale.x), viewport->Pos.y + (y / scale.y));
 }
 
 static void show_loading_popup(void)
@@ -690,6 +745,15 @@ static void show_loading_popup(void)
     ImGui::PopStyleVar(3);
 }
 
+static void select_save_slot(int slot)
+{
+    config_emulator.save_slot = slot;
+
+    char message[32];
+    snprintf(message, sizeof(message), "Save slot %d selected", slot + 1);
+    gui_notify(gui_NotificationInfo, ICON_MD_SAVE, message, NULL, "slot", gui_NotificationDurationShort);
+}
+
 static bool finish_loading_rom(void)
 {
     gui_cheats_clear();
@@ -721,11 +785,26 @@ static bool finish_loading_rom(void)
     }
 
     if (!emu_is_empty())
+    {
         application_update_title_with_rom(emu_get_core()->GetCartridge()->GetFileName());
+        gui_notify(gui_NotificationSuccess, ICON_MD_VIDEOGAME_ASSET, "ROM loaded",
+            emu_get_core()->GetCartridge()->GetFileName());
+    }
 
     update_savestates_data();
 
     return true;
+}
+
+static void load_pending_state(void)
+{
+    if (!pending_state_path.empty())
+        gui_action_load_state(pending_state_path.c_str());
+    else if (pending_state_slot > 0)
+        gui_action_load_state_slot(pending_state_slot);
+
+    pending_state_slot = 0;
+    pending_state_path.clear();
 }
 
 static void show_error_window(void)
@@ -736,8 +815,7 @@ static void show_error_window(void)
         ImGui::OpenPopup("Error");
     }
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    gui_center_next_window();
     if (ImGui::BeginPopupModal("Error", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("%s\n\n", error_message);

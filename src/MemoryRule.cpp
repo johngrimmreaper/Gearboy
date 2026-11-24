@@ -20,17 +20,11 @@
 #include "MemoryRule.h"
 #include "Cartridge.h"
 
-MemoryRule::MemoryRule(Processor* pProcessor, Memory* pMemory,
-        Video* pVideo, Input* pInput, Cartridge* pCartridge, Audio* pAudio)
+MemoryRule::MemoryRule(Memory* pMemory, Cartridge* pCartridge)
 {
-    m_pProcessor = pProcessor;
     m_pMemory = pMemory;
-    m_pVideo = pVideo;
-    m_pInput = pInput;
     m_pCartridge = pCartridge;
-    m_pAudio = pAudio;
     m_bCGB = false;
-    InitPointer(m_pRamChangedCallback);
     InitPointer(m_pTraceLogger);
 }
 
@@ -41,6 +35,11 @@ MemoryRule::~MemoryRule()
 bool MemoryRule::MapsROMDirectly()
 {
     return false;
+}
+
+u8 MemoryRule::DebugRead(u16 address)
+{
+    return PerformRead(address);
 }
 
 u8 MemoryRule::GetMapperType()
@@ -66,6 +65,12 @@ void MemoryRule::LogTraceMapperEvent(u16 address, u8 value, u8 event, u8 flags, 
         e.mapper.rom_bank0 = GetCurrentRomBankIndex(0x4000);
         e.mapper.rom_bank1 = GetCurrentRomBankIndex(0x6000);
         e.mapper.ram_bank = (s16)((GetCurrentRamBankIndex(0xA000) << 8) | GetCurrentRamBankIndex(0xB000));
+    }
+    else if (mapper == Cartridge::CartridgeNTNew)
+    {
+        e.mapper.rom_bank0 = GetCurrentRomBankIndex(0x4000);
+        e.mapper.rom_bank1 = GetCurrentRomBankIndex(0x6000);
+        e.mapper.ram_bank = (s16)GetCurrentRamBankIndex();
     }
     else
     {
@@ -114,11 +119,6 @@ bool MemoryRule::LoadRam(std::istream&, s32)
 {
     Debug("MemoryRule::LoadRam not implemented");
     return false;
-}
-
-void MemoryRule::SetRamChangedCallback(RamChangedCallback callback)
-{
-    m_pRamChangedCallback = callback;
 }
 
 size_t MemoryRule::GetRamSize()
@@ -213,7 +213,7 @@ void MemoryRule::SaveState(std::ostream&)
     Debug("MemoryRule::SaveState not implemented");
 }
 
-void MemoryRule::LoadState(std::istream&)
+void MemoryRule::LoadState(std::istream&, u32)
 {
     Debug("MemoryRule::LoadState not implemented");
 }

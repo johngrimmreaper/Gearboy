@@ -208,11 +208,13 @@ static const McpToolCategory kMcpToolCategories[] =
     {"hardware_serial", "Serial Hardware", "Inspect Game Boy SB/SC serial transfers, interrupts, timing, and local link-cable transport."},
     {"hardware_sgb", "Super Game Boy", "Inspect Super Game Boy command, border, mask, multiplayer, palette, and transfer state."},
     {"media", "Media", "Load ROMs, list recent media, load symbols, and inspect loaded cartridge/media information."},
-    {"capture", "Capture", "Capture current screenshots and Game Boy sprite images or sprite metadata."},
+    {"capture", "Capture", "Capture current screenshots, record AVI video, and Game Boy sprite images or sprite metadata."},
     {"state", "Save States", "List save slots, select a slot, save emulator state, and load emulator state."},
     {"rewind", "Rewind", "Inspect rewind buffer status and seek to rewind snapshots for time-travel debugging."},
     {"input", "Input", "Inspect, press, release, tap, or macro Game Boy input."},
     {"trace", "Trace", "Read trace entries and configure CPU, IRQ, LCD, input, timer, APU, serial, and mapper tracing."},
+    {"profiler", "Profiler", "Start, stop, or reset the function profiler and read per-function call counts and cycle statistics."},
+    {"cheats", "Cheats", "List, add, and remove Game Genie and GameShark cheat codes."},
     {"tools", "Other Tools", "Additional emulator/debugger tools that do not fit another category."}
 };
 
@@ -281,7 +283,7 @@ static const char* const kMcpMediaTools[] =
 
 static const char* const kMcpCaptureTools[] =
 {
-    "get_screenshot", "list_sprites", "get_sprite_image"
+    "get_screenshot", "start_video_recording", "stop_video_recording", "list_sprites", "get_sprite_image"
 };
 
 static const char* const kMcpStateTools[] =
@@ -305,6 +307,16 @@ static const char* const kMcpTraceTools[] =
     "get_trace_log", "set_trace_log"
 };
 
+static const char* const kMcpProfilerTools[] =
+{
+    "set_profiler", "get_profiler_data"
+};
+
+static const char* const kMcpCheatTools[] =
+{
+    "list_cheats", "add_cheat", "remove_cheat"
+};
+
 static const McpToolCategoryTools kMcpToolCategoryTools[] =
 {
     {"execution", kMcpExecutionTools, MCP_ARRAY_COUNT(kMcpExecutionTools)},
@@ -322,7 +334,9 @@ static const McpToolCategoryTools kMcpToolCategoryTools[] =
     {"state", kMcpStateTools, MCP_ARRAY_COUNT(kMcpStateTools)},
     {"rewind", kMcpRewindTools, MCP_ARRAY_COUNT(kMcpRewindTools)},
     {"input", kMcpInputTools, MCP_ARRAY_COUNT(kMcpInputTools)},
-    {"trace", kMcpTraceTools, MCP_ARRAY_COUNT(kMcpTraceTools)}
+    {"trace", kMcpTraceTools, MCP_ARRAY_COUNT(kMcpTraceTools)},
+    {"profiler", kMcpProfilerTools, MCP_ARRAY_COUNT(kMcpProfilerTools)},
+    {"cheats", kMcpCheatTools, MCP_ARRAY_COUNT(kMcpCheatTools)}
 };
 
 const size_t kMcpSearchToolLimit = 20;
@@ -589,11 +603,6 @@ json McpToolRegistry::SearchTools(const std::string& query) const
     return tools;
 }
 
-bool McpToolRegistry::IsRouterTool(const std::string& tool_name) const
-{
-    return IsRouterToolName(tool_name);
-}
-
 bool McpToolRegistry::IsRouterTool(const std::string& tool_name, const std::string& router_tool_name) const
 {
     return NormalizeToolName(tool_name) == router_tool_name;
@@ -712,6 +721,10 @@ std::string McpToolRegistry::AliasesForTool(const std::string& tool_name) const
         aliases += " label labels names debug symbols";
     if (StringContains(name, "trace"))
         aliases += " log logger events cpu irq debug output";
+    if (StringContains(name, "profiler"))
+        aliases += " performance cycles timing hotspot function calls frame";
+    if (StringContains(name, "video_recording"))
+        aliases += " record movie clip capture avi mjpeg gameplay";
     if (StringContains(name, "controller"))
         aliases += " input joypad gamepad button macro tap press release";
     if (StringContains(name, "state") || StringContains(name, "rewind"))

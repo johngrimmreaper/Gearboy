@@ -25,7 +25,9 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/gui_filedialogs.cpp \
     $(DESKTOP_SRC_DIR)/gui_menus.cpp \
     $(DESKTOP_SRC_DIR)/gui_popups.cpp \
+    $(DESKTOP_SRC_DIR)/gui_shader.cpp \
     $(DESKTOP_SRC_DIR)/gui_actions.cpp \
+    $(DESKTOP_SRC_DIR)/gui_notifications.cpp \
     $(DESKTOP_SRC_DIR)/ogl_renderer.cpp \
     $(DESKTOP_SRC_DIR)/ogl_shader_program.cpp \
     $(DESKTOP_SRC_DIR)/ogl_shader_chain.cpp \
@@ -37,6 +39,7 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/link_cable/link_cable_manager.cpp \
     $(DESKTOP_SRC_DIR)/rewind.cpp \
     $(DESKTOP_SRC_DIR)/runahead.cpp \
+    $(DESKTOP_SRC_DIR)/video_recorder.cpp \
     $(DESKTOP_SRC_DIR)/sound_queue.cpp \
     $(DESKTOP_SRC_DIR)/single_instance.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug.cpp \
@@ -45,6 +48,7 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/gui_debug_memory.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_memeditor.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_trace_logger.cpp \
+    $(DESKTOP_SRC_DIR)/gui_debug_profiler.cpp \
     $(DESKTOP_SRC_DIR)/trace_logger_formatter.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_processor.cpp \
     $(DESKTOP_SRC_DIR)/gui_debug_video.cpp \
@@ -57,6 +61,7 @@ SOURCES_CXX := \
     $(DESKTOP_SRC_DIR)/mcp/mcp_server.cpp \
     $(SRC_DIR)/Audio.cpp \
     $(SRC_DIR)/Cartridge.cpp \
+    $(SRC_DIR)/BarcodeBoy.cpp \
     $(SRC_DIR)/CommonMemoryRule.cpp \
     $(SRC_DIR)/GearboyCore.cpp \
     $(SRC_DIR)/Input.cpp \
@@ -65,6 +70,7 @@ SOURCES_CXX := \
     $(SRC_DIR)/MBC2MemoryRule.cpp \
     $(SRC_DIR)/MBC3MemoryRule.cpp \
     $(SRC_DIR)/MBC5MemoryRule.cpp \
+    $(SRC_DIR)/MBC5LogoMemoryRule.cpp \
     $(SRC_DIR)/MBC6MemoryRule.cpp \
     $(SRC_DIR)/Memory.cpp \
     $(SRC_DIR)/MemoryRule.cpp \
@@ -79,7 +85,16 @@ SOURCES_CXX := \
     $(SRC_DIR)/M161MemoryRule.cpp \
     $(SRC_DIR)/SachenMMC1MemoryRule.cpp \
     $(SRC_DIR)/SachenMMC2MemoryRule.cpp \
+    $(SRC_DIR)/RocketMemoryRule.cpp \
     $(SRC_DIR)/FlashcartMemoryRule.cpp \
+    $(SRC_DIR)/BHGOSMemoryRule.cpp \
+    $(SRC_DIR)/LiChengMemoryRule.cpp \
+    $(SRC_DIR)/NTNewMemoryRule.cpp \
+    $(SRC_DIR)/GGB81MemoryRule.cpp \
+    $(SRC_DIR)/HitekMemoryRule.cpp \
+    $(SRC_DIR)/VF001MemoryRule.cpp \
+    $(SRC_DIR)/SintaxMemoryRule.cpp \
+    $(SRC_DIR)/NTOldMemoryRule.cpp \
     $(SRC_DIR)/opcodes.cpp \
     $(SRC_DIR)/opcodes_cb.cpp \
     $(SRC_DIR)/Processor.cpp \
@@ -88,6 +103,7 @@ SOURCES_CXX := \
     $(SRC_DIR)/VgmRecorder.cpp \
     $(SRC_DIR)/SGB.cpp \
     $(SRC_DIR)/TraceLogger.cpp \
+    $(SRC_DIR)/Profiler.cpp \
     $(SRC_DIR)/audio/Blip_Buffer.cpp \
     $(SRC_DIR)/audio/Effects_Buffer.cpp \
     $(SRC_DIR)/audio/Gb_Apu.cpp \

@@ -26,10 +26,7 @@
 
 const int kMMM01RamBanksSize = 0x20000;
 
-MMM01MemoryRule::MMM01MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+MMM01MemoryRule::MMM01MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     m_pRAMBanks = new u8[kMMM01RamBanksSize];
     Reset(false);
@@ -374,7 +371,7 @@ void MMM01MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*> (&m_CurrentRAMAddress), sizeof(m_CurrentRAMAddress));
 }
 
-void MMM01MemoryRule::LoadState(std::istream& stream)
+void MMM01MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

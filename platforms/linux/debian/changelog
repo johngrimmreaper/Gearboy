@@ -1,3 +1,11 @@
+gearboy (3.8.22-1) UNRELEASED; urgency=medium
+
+  * New upstream release 3.8.22.
+  * Install upstream icons at all supported resolutions.
+  * Upstream bug fixes and improvements.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 24 Nov 2026 02:31:52 +0000
+
 gearboy (3.8.15-1) UNRELEASED; urgency=medium
 
   * New iOS App (in development)

@@ -88,8 +88,10 @@ void Memory::LogLCDDMAEvent(u8 event, u16 source, u16 destination, u16 length)
 #endif
 }
 
-void Memory::CheckBreakpoints(u16 address, bool write)
+void Memory::CheckMemoryHooks(u16 address, bool write)
 {
+    m_pProcessor->CheckVBlankWatch(address, !write);
+
     if (address >= 0xFF00 && address <= 0xFF7F)
         m_pProcessor->CheckMemoryBreakpoints(Processor::GB_BREAKPOINT_TYPE_IO, address - 0xFF00, !write);
     else if (address >= 0x8000 && address <= 0x9FFF)
@@ -345,35 +347,6 @@ void Memory::LoadBank0and1FromROM(u8* pTheROM)
     for (int i = 0; i < 0x8000; i++)
     {
         m_pMap[i] = pTheROM[i];
-    }
-}
-
-void Memory::MemoryDump(const char* szFilePath)
-{
-    if (!IsValidPointer(m_pDisassembledMap))
-        return;
-
-    using namespace std;
-
-    ofstream myfile;
-    open_ofstream_utf8(myfile, szFilePath, ios::out | ios::trunc);
-
-    if (myfile.is_open())
-    {
-        for (int i = 0; i < 65536; i++)
-        {
-            if (IsValidPointer(m_pDisassembledMap[i]) && (m_pDisassembledMap[i]->name[0] != 0))
-            {
-                myfile << "0x" << hex << i << "\t " << m_pDisassembledMap[i]->name << "\n";
-                i += (m_pDisassembledMap[i]->size - 1);
-            }
-            else
-            {
-                myfile << "0x" << hex << i << "\t [0x" << hex << (int) m_pMap[i] << "]\n";
-            }
-        }
-
-        myfile.close();
     }
 }
 
@@ -706,7 +679,6 @@ GB_Disassembler_Record* Memory::GetOrCreateDisassemblerRecord(u16 address)
     if (!IsValidPointer(record))
     {
         record = new GB_Disassembler_Record();
-        record->address = physical_address;
         record->bank = GetBank(address);
         record->segment[0] = 0;
         record->name[0] = 0;

@@ -36,10 +36,7 @@ static inline u16 LE16(u16 v)
 }
 #endif
 
-MBC7MemoryRule::MBC7MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+MBC7MemoryRule::MBC7MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     Reset(false);
 }
@@ -442,7 +439,7 @@ void MBC7MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*>(&m_bEEPROMWriteEnabled), sizeof(m_bEEPROMWriteEnabled));
 }
 
-void MBC7MemoryRule::LoadState(std::istream& stream)
+void MBC7MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

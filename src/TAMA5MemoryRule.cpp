@@ -128,10 +128,7 @@ static int DayOfYearToDayOfMonth(int dayOfYear, int leapYear)
     return dayOfYear - offset;
 }
 
-TAMA5MemoryRule::TAMA5MemoryRule(Processor* pProcessor,
-        Memory* pMemory, Video* pVideo, Input* pInput,
-        Cartridge* pCartridge, Audio* pAudio) : MemoryRule(pProcessor,
-pMemory, pVideo, pInput, pCartridge, pAudio)
+TAMA5MemoryRule::TAMA5MemoryRule(Memory* pMemory, Cartridge* pCartridge) : MemoryRule(pMemory, pCartridge)
 {
     Reset(false);
 }
@@ -635,7 +632,7 @@ void TAMA5MemoryRule::SaveState(std::ostream& stream)
     stream.write(reinterpret_cast<const char*>(&m_RTC), sizeof(m_RTC));
 }
 
-void TAMA5MemoryRule::LoadState(std::istream& stream)
+void TAMA5MemoryRule::LoadState(std::istream& stream, u32)
 {
     using namespace std;
 

@@ -25,10 +25,16 @@
     <ClCompile Include="..\shared\desktop\runahead.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\video_recorder.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\gui.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_actions.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\gui_notifications.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_cheats.cpp">
@@ -70,10 +76,16 @@
     <ClCompile Include="..\shared\desktop\gui_debug_trace_logger.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\gui_debug_profiler.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\trace_logger_formatter.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_popups.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\gui_shader.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_menus.cpp">
@@ -115,6 +127,9 @@
     <ClCompile Include="..\shared\desktop\mcp\mcp_debug_adapter.cpp">
       <Filter>desktop\mcp</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\mcp\mcp_tool_registry.cpp">
+      <Filter>desktop\mcp</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\mcp\mcp_server.cpp">
       <Filter>desktop\mcp</Filter>
     </ClCompile>
@@ -142,6 +157,9 @@
     <ClCompile Include="..\..\src\Cartridge.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\BarcodeBoy.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\CommonMemoryRule.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -164,6 +182,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\MBC5MemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\MBC5LogoMemoryRule.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\MBC6MemoryRule.cpp">
@@ -208,7 +229,34 @@
     <ClCompile Include="..\..\src\SachenMMC2MemoryRule.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\RocketMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\FlashcartMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\BHGOSMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\LiChengMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\NTNewMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\GGB81MemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\HitekMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\VF001MemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\SintaxMemoryRule.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\NTOldMemoryRule.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\opcodes.cpp">
@@ -233,6 +281,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\TraceLogger.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\Profiler.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\dependencies\miniz\miniz.c">
@@ -279,6 +330,9 @@
     <ClInclude Include="..\shared\desktop\backers.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\barcode_boy_codes.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\config.h">
       <Filter>desktop</Filter>
     </ClInclude>
@@ -309,10 +363,16 @@
     <ClInclude Include="..\shared\desktop\runahead.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\video_recorder.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\gui.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_actions.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_notifications.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_cheats.h">
@@ -322,6 +382,9 @@
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug_rewind.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_colors.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug_constants.h">
@@ -360,6 +423,9 @@
     <ClInclude Include="..\shared\desktop\gui_debug_trace_logger.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_debug_profiler.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\trace_logger_formatter.h">
       <Filter>desktop</Filter>
     </ClInclude>
@@ -375,8 +441,11 @@
     <ClInclude Include="..\shared\desktop\gui_popups.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\gui_shader.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\src\ips_patch.h">
-      <Filter>core</Filter>
+      <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\license.h">
       <Filter>desktop</Filter>
@@ -447,6 +516,12 @@
     <ClInclude Include="..\..\src\Cartridge.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\BarcodeBoy.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\game_db.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\src\common.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -484,6 +559,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\MBC5MemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\MBC5LogoMemoryRule.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\MBC6MemoryRule.h">
@@ -531,7 +609,34 @@
     <ClInclude Include="..\..\src\SachenMMC2MemoryRule.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\RocketMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\src\FlashcartMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\BHGOSMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\LiChengMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\NTNewMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\GGB81MemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\HitekMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\VF001MemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\SintaxMemoryRule.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\NTOldMemoryRule.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\opcode_names.h">
@@ -565,6 +670,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\TraceLogger.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\Profiler.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\dependencies\glad\glad.h">
@@ -675,5 +783,6 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Gearboy.rc" />
+    <ResourceCompile Include="version.rc" />
   </ItemGroup>
 </Project>

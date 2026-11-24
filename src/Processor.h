@@ -27,8 +27,11 @@
 #include "SixteenBitRegister.h"
 #include "link_cable.h"
 
+
+
 class Memory;
 class TraceLogger;
+class Profiler;
 
 class Processor
 {
@@ -47,16 +50,11 @@ public:
     {
         GB_BREAKPOINT_TYPE_ROMRAM = 0,
         GB_BREAKPOINT_TYPE_VRAM,
-        GB_BREAKPOINT_TYPE_IO,
-        GB_BREAKPOINT_TYPE_COUNT
+        GB_BREAKPOINT_TYPE_IO
     };
 
     // Compatibility aliases for shared GUI code
     static const int GS_BREAKPOINT_TYPE_ROMRAM = GB_BREAKPOINT_TYPE_ROMRAM;
-    static const int GS_BREAKPOINT_TYPE_VRAM = GB_BREAKPOINT_TYPE_VRAM;
-    static const int GS_BREAKPOINT_TYPE_VDP_REGISTER = GB_BREAKPOINT_TYPE_IO;
-    static const int GS_BREAKPOINT_TYPE_CRAM = GB_BREAKPOINT_TYPE_IO;
-    static const int GS_BREAKPOINT_TYPE_COUNT = GB_BREAKPOINT_TYPE_COUNT;
 
     struct GB_Breakpoint
     {
@@ -111,6 +109,8 @@ public:
         u64 next_shift_cycle;
     };
 
+    static const int k_serial_state_size = 35;
+
 public:
     Processor(Memory* pMemory);
     ~Processor();
@@ -125,21 +125,25 @@ public:
     bool DuringOpCode() const;
     bool CGBSpeed() const;
     void AddCycles(unsigned int cycles);
-    bool InterruptIsAboutToRaise();
     void SaveState(std::ostream& stream);
-    void LoadState(std::istream& stream);
+    void LoadState(std::istream& stream, u32 version = GB_SAVESTATE_VERSION);
     void SetGameSharkCheat(const char* szCheat);
     void ClearGameSharkCheats();
     ProcessorState* GetState();
+    void SetPC(u16 value);
     void SetDisassemblerSyntax(GB_Disassembler_Syntax syntax);
-    GB_Disassembler_Syntax GetDisassemblerSyntax() const;
     NO_INLINE void DisassembleNextOPCode();
     NO_INLINE void PopulateDisassemblerRecord(GB_Disassembler_Record* record, u16 address);
     void InvalidateOverlappingRecords(u16 address, u8 opcode_size);
     void DisassembleAhead(int count);
     void DisassembleAhead(u16 start_address, int count, int depth);
     void EnableBreakpoints(bool enable, bool irqs);
-    INLINE bool MemoryBreakpointsEnabled() const;
+    INLINE bool HasMemoryHooks(bool read) const;
+    INLINE void CheckVBlankWatch(u16 address, bool read);
+    void SetVBlankWatch(bool read, bool write, u16 address);
+    u32 UpdateVBlankWatch();
+    INLINE u16 GetVBlankWatchAddress() const;
+    INLINE bool GetVBlankWatchAccess(bool read) const;
     bool BreakpointHit();
     bool MemoryBreakpointHit();
     bool RunToBreakpointHit();
@@ -151,18 +155,26 @@ public:
     bool IsBreakpoint(int type, u16 address);
     std::vector<GB_Breakpoint>* GetBreakpoints();
     void ClearDisassemblerCallStack();
+    void ResetDebuggerExecutionState();
     std::stack<GB_CallStackEntry>* GetDisassemblerCallStack();
     void CheckMemoryBreakpoints(int type, u16 address, bool read);
     bool Halted();
     void SetTraceLogger(TraceLogger* pTraceLogger);
+    void SetProfiler(Profiler* pProfiler);
     u8 NormalizeSerialControl(u8 value) const;
     void NotifySerialDataWrite(u8 value);
     void NotifySerialControlWrite(u8 value);
     void SetLinkCableCallbacks(GB_LinkCableStateCallback state_callback, GB_LinkCableStartCallback start_callback,
         GB_LinkCablePollCallback poll_callback, GB_LinkCableSyncCallback sync_callback, void* user_data);
-    void SetLinkCableConnected(bool connected, u64 current_cycle);
     bool IsLinkCableConnected() const;
+    void SetSerialConnected(bool connected, bool link_connected, u64 current_cycle);
+    void ResetSerialDevice();
+    void SaveSerialState(std::ostream& stream);
+    bool LoadSerialState(std::istream& stream, bool apply_state = true);
     void GetSerialState(SerialState& state) const;
+    void SetLinkCableIncomingByte(u32 transfer_id, u8 incoming_byte);
+    void SaveLinkCableState(std::ostream& stream);
+    void LoadLinkCableState(std::istream& stream);
     u32 GetLinkCablePromiseCycles(u64 current_cycle) const;
     INLINE void UpdateTimers(u8 ticks);
     INLINE void UpdateSerial(u8 ticks, u64 current_cycle);
@@ -182,6 +194,7 @@ private:
     OPCptr m_OPCodesCB[256];
     Memory* m_pMemory;
     TraceLogger* m_pTraceLogger;
+    Profiler* m_pProfiler;
     SixteenBitRegister AF;
     SixteenBitRegister BC;
     SixteenBitRegister DE;
@@ -219,6 +232,7 @@ private:
     GB_LinkCableSyncCallback m_link_cable_sync_callback;
     void* m_link_cable_user_data;
     bool m_bLinkCableConnected;
+    bool m_bSerialConnected;
     u64 m_iLinkCableNextSyncCycle;
     u32 m_iLinkCableSyncCycles;
     int m_iIMECycles;
@@ -229,9 +243,18 @@ private:
     int m_iSpeedMultiplier;
     unsigned int m_iMachineCycle;
     int m_iAccurateOPCodeState;
+    u16 m_OpcodeCache;
     u8 m_iReadCache;
     bool m_breakpoints_enabled;
     bool m_breakpoints_irq_enabled;
+    bool m_memory_hooks_read;
+    bool m_memory_hooks_write;
+    bool m_vblank_watch_read;
+    bool m_vblank_watch_write;
+    u16 m_vblank_watch_address;
+    bool m_vblank_watch_hit;
+    bool m_vblank_watch_armed;
+    u32 m_vblank_watch_misses;
     bool m_cpu_breakpoint_hit;
     bool m_memory_breakpoint_hit;
     bool m_run_to_breakpoint_hit;
@@ -254,8 +277,11 @@ private:
 
 private:
     void CheckBreakpoints();
-    void PushCallStack(u16 src, u16 dest, u16 back, u8 bank);
-    void PopCallStack();
+    void RefreshMemoryHooks();
+    void ResetVBlankWatch();
+    void PushCallStack(u16 src, u16 dest, u16 back, u8 bank, u8 machine_cycles, bool irq);
+    void PopCallStack(u8 machine_cycles);
+    NO_INLINE void ProfilerEnter(u16 address, u32 pending_cycles, bool irq);
     void FormatDisassemblerDataBytes(char* text, size_t text_size, const u8* bytes, int size);
     void SetDisassemblerOperandText(GB_Disassembler_Record* record, const char* text);
     void SetDisassemblerOperand(GB_Disassembler_Record* record, u16 address, bool is_zp, const char* text);
@@ -277,7 +303,7 @@ private:
     void PollExternalSerialTransfer(u64 current_cycle);
     void RestoreSerialTransfer(u64 current_cycle);
     void ShiftSerialBit(u64 edge_cycle);
-    void PublishSerialState(u64 cycle);
+    void PublishSerialState(u64 cycle, GB_SerialEvent event = GB_SerialEvent_State);
     u32 GetLinkCableSyncCycles(u64 current_cycle) const;
     void UpdateGameShark();
     void ClearAllFlags();

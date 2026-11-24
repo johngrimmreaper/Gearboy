@@ -96,7 +96,7 @@ static const char* get_mapper_name(u8 mapper)
     static const char* k_names[] = {
         "ROM", "MBC1", "MBC2", "MBC3", "MBC5", "MBC1M", "HuC1", "HuC3",
         "MMM01", "CAMERA", "MBC7", "TAMA5", "WISDOM", "M161", "SACHEN1",
-        "SACHEN2", "PKJD", "BUNG", "POKE2", "MBC6", "UNKNOWN"
+        "SACHEN2", "PKJD", "BUNG", "POKE2", "MBC6", "ROCKET", "BHGOS", "LICHENG", "NTNEW", "GGB81", "HITEK", "VF001", "VF001A", "SINTAX", "NTOLD1", "NTOLD2", "UNKNOWN"
     };
     if (mapper < (sizeof(k_names) / sizeof(k_names[0])) - 1)
         return k_names[mapper];
@@ -502,6 +502,28 @@ void trace_logger_format_entry(const GB_Trace_Entry& entry,
                              entry.lcd.line, get_lcd_mode_name(entry.lcd.mode), entry.lcd.mode);
                     break;
                 }
+                case TRACE_LCD_SPRITE_BUDGET:
+                case TRACE_LCD_SPRITE_LIMIT:
+                {
+                    int dropped = MAX(0, (int)entry.lcd.value - (int)entry.lcd.value2);
+                    if (entry.lcd.event == TRACE_LCD_SPRITE_LIMIT)
+                        snprintf(buf, buf_size, "  [LCD]  SPRITES LIMIT HIT LY:$%02X Count:%u/10 Dropped:%d",
+                                 entry.lcd.line, entry.lcd.value, dropped);
+                    else if (entry.lcd.value > 10)
+                        snprintf(buf, buf_size, "  [LCD]  SPRITES LY:$%02X Count:%u/10 LIMIT HIT Dropped:%d",
+                                 entry.lcd.line, entry.lcd.value, dropped);
+                    else
+                        snprintf(buf, buf_size, "  [LCD]  SPRITES LY:$%02X Count:%u/10",
+                                 entry.lcd.line, entry.lcd.value);
+                    break;
+                }
+                case TRACE_LCD_MISSED_VBLANK:
+                {
+                    const char* access = entry.lcd.raw == 0x03 ? "R/W" : (entry.lcd.raw == 0x02 ? "W" : "R");
+                    snprintf(buf, buf_size, "  [LCD]  VBLANK MISSED Watch:$%04X %s Consecutive:%u",
+                             entry.lcd.address, access, entry.lcd.value);
+                    break;
+                }
                 default:
                     snprintf(buf, buf_size, "  [LCD]  UNKNOWN EVENT($%02X)", entry.lcd.event);
                     break;
@@ -699,6 +721,21 @@ void trace_logger_format_entry(const GB_Trace_Entry& entry,
                         entry.mapper.rom_bank1 & 0x7F,
                         ((u16)entry.mapper.ram_bank >> 8) & 0xFF,
                         (u16)entry.mapper.ram_bank & 0xFF, state);
+                break;
+            }
+
+            if (entry.mapper.mapper == Cartridge::CartridgeNTNew)
+            {
+                const char* event_name = "CONTROL";
+                if (entry.mapper.event == TRACE_MAPPER_ROM)
+                    event_name = "ROM";
+                else if (entry.mapper.event == TRACE_MAPPER_RAM_RTC)
+                    event_name = "RAM";
+
+                snprintf(buf, buf_size,
+                        "  [MAP]  NTNEW %s WRITE Addr:$%04X Data:$%02X ROMA:$%03X ROMB:$%03X RAM:$%02X%s",
+                        event_name, entry.mapper.address, entry.mapper.value,
+                        entry.mapper.rom_bank0, entry.mapper.rom_bank1, (u16)entry.mapper.ram_bank, state);
                 break;
             }
 
